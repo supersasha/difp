@@ -33,7 +33,7 @@ int runGui(GuiBuilder& builder)
     //glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);            // 3.0+ only
 
     // Create window with graphics context
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "ИФП-01", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(1920, 1000, "ИФП-01", NULL, NULL);
     if (window == NULL)
         return 1;
     glfwMakeContextCurrent(window);

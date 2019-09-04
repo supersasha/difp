@@ -11,6 +11,7 @@ public:
     ~Jpeg();
 
     Rgb32Image load(const std::string& filename);
+    void save(const Rgb32Image&, const std::string& filename);
 
     unsigned long bufSize(int w, int h);
     unsigned long compress(const Rgb32Image&,

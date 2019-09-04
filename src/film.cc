@@ -15,8 +15,10 @@ void process_photo(Image& img, const PhotoProcessOpts& opts)
         
     cl::KernelFunctor<cl::Buffer, cl::Buffer>
         kf(drv.program(), "process_photo");
+    /*
     cl::KernelFunctor<cl::Buffer, cl::Buffer>
         kf2(drv.program(), "process_photo_cont");
+    */
 
     auto args = cl::EnqueueArgs(queue, cl::NDRange(len));
     kf(args, img_buf, opts_buf);
@@ -31,8 +33,10 @@ void process_photo(Image& img, const PhotoProcessOpts& opts)
     }
     */
 
+    /*
     cl::Buffer img_buf2(drv.context(), img.data, img.data + len, false);
     kf2(args, img_buf2, opts_buf);
 
     cl::copy(queue, img_buf2, img.data, img.data + len);
+    */
 }

@@ -29,8 +29,8 @@ public:
     {
         //std::string filmFile = m_ui.getString("film-file");
         //std::string paperFile = m_ui.getString("paper-file");
-        std::string filmFile = "profiles/film/kodak-portra-400-v5.phm.film";
-        std::string paperFile = "profiles/paper/kodak-endura-experim.phm.paper";
+        std::string filmFile = "profiles/film/kodak-portra-400-new-v1.film"; //"profiles/film/kodak-portra-400-v5.phm.film";
+        std::string paperFile = "profiles/paper/kodak-endura-new-v1.paper"; //"profiles/paper/kodak-endura-experim.phm.paper";
 
         PhotoProcessOpts opts;
         opts.exposure_correction_film = m_filmExposure;
@@ -68,7 +68,8 @@ public:
         opts.extra.psb = m_blue;
         opts.extra.linear_amp = m_linAmp;
         opts.extra.pixel = y * image.width + x;
-        std::cout << "x=" << x << " y=" << y << " px: " << opts.extra.pixel << "\n";
+        opts.extra.stop = m_filmOnly ? 1 : 0;
+        //std::cout << "x=" << x << " y=" << y << " px: " << opts.extra.pixel << "\n";
 
         process_photo(image, opts);
         Rgb32Image img = convert_image_to_rgb32(image);
@@ -93,7 +94,9 @@ public:
     {
         ImGui::Begin("Image");
         auto spos = ImGui::GetCursorScreenPos(); 
-        ImGui::Image((void*)(intptr_t)tex.id(), ImVec2(m_smallImage.width, m_smallImage.height));//tex.width(), tex.height()));
+        int width = m_smallImage.width ? m_smallImage.width : SMALL_WIDTH; 
+        int height = m_smallImage.height ? m_smallImage.height : SMALL_HEIGHT; 
+        ImGui::Image((void*)(intptr_t)tex.id(), ImVec2(width, height));
         if (ImGui::IsItemClicked()) {
             auto pos = ImGui::GetMousePos();
             int x = pos.x - spos.x;
@@ -129,22 +132,29 @@ public:
                     }
                     //std::cout << pos.x - spos.x << ", " << pos.y - spos.y << "\n";
                 }
-
                 processSmallImage();
             }
         }
-        auto width = ImGui::GetWindowSize().x;
+        auto windowWidth = ImGui::GetWindowSize().x;
         ImGui::End();
-        return width;
+        return windowWidth;
     }
 
     void buildParametersWindow()
     {
         ImGui::Begin("Parameters");
 
-        if (ImGui::Button("Open File Dialog"))
-        {
+        if (ImGui::Button("Open File Dialog")) {
             openFileDialog = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Save")) {
+            std::cout << "Saving...\n";
+            auto image = m_origImage.clone();
+            auto rgb32Image = processImage(image);
+            Jpeg jpeg;
+            jpeg.save(rgb32Image, "out.jpg");
+            std::cout << "done\n";
         }
         if (openFileDialog) {
             if (FileBrowser("Open file", fi)) {
@@ -167,16 +177,19 @@ public:
         if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -5, 5, "%.2f")) {
             processSmallImage();
         }
+        if (ImGui::Checkbox("Film only", &m_filmOnly)) {
+            processSmallImage();
+        }
         if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -5, 5, "%.2f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Red", &m_red, 0, 3.8, "%.2f")) {
+        if (ImGui::SliderFloat("Red", &m_red, 0, 0.8, "%.3f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Green", &m_green, 0, 3.8, "%.2f")) {
+        if (ImGui::SliderFloat("Green", &m_green, 0, 0.8, "%.3f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Blue", &m_blue, 0, 3.8, "%.2f")) {
+        if (ImGui::SliderFloat("Blue", &m_blue, 0.0, 1.5, "%.3f")) {
             processSmallImage();
         }
         if (ImGui::SliderFloat("Linear amplification", &m_linAmp, 1, 500, "%.1f")) {
@@ -225,18 +238,19 @@ private:
 
     Image m_origImage;
     Image m_smallImage;
-    float m_filmExposure = 0.0;
-    float m_paperExposure = -2.0;
+    float m_filmExposure = -2.5;
+    float m_paperExposure = -3.18;
     float m_red = 0.00;
-    float m_green = 0.31;
-    float m_blue = 0.33;
+    float m_green = 0.438;
+    float m_blue = 0.765;
 
     bool m_inProcessingImage = false;
     bool m_scheduleProcessImage = false;
     std::future<Rgb32Image> m_processImageFuture;
 
     bool m_isCrop = false;
-    float m_linAmp = 166;
+    float m_linAmp = 428.5;
+    bool m_filmOnly = false;
 };
 
 int main(int, char**)

@@ -16,6 +16,13 @@ std::vector<unsigned char> read_binary_file(const std::string& filename)
     return buffer;
 }
 
+void write_binary_file(const std::vector<unsigned char>& buf,
+                       const std::string& filename)
+{
+    std::ofstream file(filename, std::ios::binary | std::ios::trunc);
+    file.write((char*)buf.data(), buf.size());
+}
+
 std::string read_text_file(const std::string& filename)
 {
     std::ifstream ifs(filename);

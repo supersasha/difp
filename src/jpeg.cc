@@ -1,6 +1,9 @@
 #include "jpeg.h"
 #include "utils.h"
 
+#include <vector>
+#include <iostream>
+
 Jpeg::Jpeg()
 {
     m_compressor = tjInitCompress();
@@ -54,6 +57,16 @@ Rgb32Image Jpeg::load(const std::string& filename)
 {
     auto jpegImage = read_binary_file(filename);
     return decompress(jpegImage.data(), jpegImage.size());
+}
+
+void Jpeg::save(const Rgb32Image& img, const std::string& filename)
+{
+    unsigned long bSize = bufSize(img.width, img.height);
+    std::vector<unsigned char> buf(bSize);
+    unsigned long size = compress(img, buf.data(), 75);
+    std::cout << "Jpeg size = " << size << "\n";
+    buf.resize(size);
+    write_binary_file(buf, filename);
 }
 
     /*
