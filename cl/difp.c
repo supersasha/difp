@@ -924,6 +924,7 @@ struct Extra
     float psg;
     float psb;
     float linear_amp;
+    float layer2d;
 
     float cy;
     float cm;
@@ -933,6 +934,10 @@ struct Extra
     int data;
 
     int pixel;
+    int frame_horz;
+    int frame_vert;
+    float film_contrast;
+    float paper_contrast;
 };
 
 struct SplineS
@@ -1119,9 +1124,11 @@ float4 rgb_to_exposure(float4 rgb, struct PhotoProcessOpts * opts)
         //float di = daylight_illuminant(p, i);
         //spectrum *= di / 100.0f;
 
+        /*
         if (opts->extra.data >= 0) { 
             spectrum *= FILTERS[opts->extra.data][i] / 100.0;
         }
+        */
         
         /*
         spectrum *= pow(10.0f,
@@ -1315,10 +1322,29 @@ float nneg(float x)
 
 __kernel void process_photo(
     __global float4 * img,
-    __global struct PhotoProcessOpts * opts
+    __global struct PhotoProcessOpts * opts,
+    __global float4 * out_img
     )
 {
-    int idx = get_global_id(0);
+    int out_col = get_global_id(0);
+    int out_row = get_global_id(1);
+    int width = get_global_size(0);
+    int height = get_global_size(1);
+
+    int fr_horz = opts->extra.frame_horz;
+    int fr_vert = opts->extra.frame_vert;
+    
+    int out_idx = out_row * width + out_col;
+
+    if (out_col < fr_horz || out_col >= width - fr_horz
+        || out_row < fr_vert || out_row >= height - fr_vert)
+    {
+        out_img[out_idx] = (float4) (1, 1, 1, 0);
+        return;
+    }
+
+    int idx = (out_row - fr_vert) * (width - 2 * fr_horz) + (out_col - fr_horz);
+
     int es = opts->extra.stop;
     
     float4 px = (idx == 0) ? srgb_to_xyz_scalar((float4)(0.01f, 0.01f, 0.01f, 0.0f))
@@ -1335,7 +1361,7 @@ __kernel void process_photo(
     density.z *= exp(-0.25f * density.z);
 #endif
 
-    float4 density2 = exposure_to_density(exposure, opts, 1.0f, 1.2f);
+    float4 density2 = exposure_to_density(exposure, opts, 1.0f, opts->extra.layer2d);
     //float L = 0.0f;
     exposure = (float4)(0, 0, 0, 0);
     float4 xyz = (float4)(0, 0, 0, 0);
@@ -1350,12 +1376,12 @@ __kernel void process_photo(
                  + (1-density.y) * opts->film.red.couplers[1]
                  + (1-density.z) * opts->film.red.couplers[2]);
         
-        float cg = opts->film.red.couplers[0] * (
+        float cg = opts->film.green.couplers[1] * (
                    (1-density.x) * opts->film.green.couplers[0]
                  + density.y 
                  + (1-density.z) * opts->film.green.couplers[2]);
 
-        float cb = opts->film.red.couplers[0] * (
+        float cb = opts->film.blue.couplers[2] * (
                    (1-density.x) * opts->film.blue.couplers[0]
                  + (1-density.y) * opts->film.blue.couplers[1]
                  + density.z);
@@ -1367,12 +1393,12 @@ __kernel void process_photo(
                  + (1-density2.y) * opts->film.red.couplers[1]
                  + (1-density2.z) * opts->film.red.couplers[2]);
         
-        float cg2 = opts->film.red.couplers[0] * (
+        float cg2 = opts->film.green.couplers[1] * (
                   (1-density2.x) * opts->film.green.couplers[0]
                  + density2.y
                  + (1-density2.z) * opts->film.green.couplers[2]);
 
-        float cb2 = opts->film.red.couplers[0] * (
+        float cb2 = opts->film.blue.couplers[2] * (
                    (1-density2.x) * opts->film.blue.couplers[0]
                  + (1-density2.y) * opts->film.blue.couplers[1]
                  + density2.z);
@@ -1392,21 +1418,22 @@ __kernel void process_photo(
         float rrr = rr*(j*cr + (1-j)*cr2);
         float ggg = gg*(j*cg + (1-j)*cg2);
         float bbb = bb*(j*cb + (1-j)*cb2);
-        lt /= pow(10.0f, rrr + ggg + bbb); 
+        lt /= pow(10.0f, opts->extra.film_contrast * (rrr + ggg + bbb)); 
         /*
            + CC_FILTER[0][i]*opts->extra.psr
            + CC_FILTER[1][i]*opts->extra.psg
            + CC_FILTER[2][i]*opts->extra.psb);
         */
-        lt /= pow(10.0f,
-                ((i >= 0  && i < 26) ? 1.0f : 0.0f) * opts->extra.psb +
-                ((i >= 26 && i < 40) ? 1.0f : 0.0f) * opts->extra.psg +
-                ((i >= 40 && i < 65) ? 1.0f : 0.0f) * opts->extra.psr);
-
         if (!opts->extra.stop) {
-            exposure.x += lt * opts->paper.red.sense.v[i];
-            exposure.y += lt * opts->paper.green.sense.v[i];
-            exposure.z += lt * opts->paper.blue.sense.v[i];
+            /*
+            lt /= pow(10.0f,
+                    ((i >= 0  && i < 26) ? 1.0f : 0.0f) * opts->extra.psb +
+                    ((i >= 26 && i < 40) ? 1.0f : 0.0f) * opts->extra.psg +
+                    ((i >= 40 && i < 65) ? 1.0f : 0.0f) * opts->extra.psr);
+            */
+            exposure.x += lt * opts->paper.red.sense.v[i] * pow(10.0f, opts->extra.psr);
+            exposure.y += lt * opts->paper.green.sense.v[i] * pow(10.0f, opts->extra.psg);
+            exposure.z += lt * opts->paper.blue.sense.v[i] * pow(10.0f, opts->extra.psb);
         } else {
             xyz.x += lt * A1931_78[i][0];
             xyz.y += lt * A1931_78[i][1];
@@ -1415,7 +1442,7 @@ __kernel void process_photo(
     }
     if (opts->extra.stop) {
         float4 c = xyz_to_srgb_scalar(xyz / 3000.0f * opts->extra.linear_amp);
-        img[idx] = c;
+        out_img[out_idx] = c;
         return;
     }
     /*
@@ -1439,11 +1466,11 @@ __kernel void process_photo(
                     density.x
                  + (1-density.y) * opts->paper.red.couplers[1]
                  + (1-density.z) * opts->paper.red.couplers[2]);
-        float cg = opts->paper.red.couplers[0] * (
+        float cg = opts->paper.green.couplers[1] * (
                    (1-density.x) * opts->paper.green.couplers[0]
                  + density.y
                  + (1-density.z) * opts->paper.green.couplers[2]);
-        float cb = opts->paper.red.couplers[0] * (
+        float cb = opts->paper.blue.couplers[2] * (
                    (1-density.x) * opts->paper.blue.couplers[0]
                  + (1-density.y) * opts->paper.blue.couplers[1]
                  + density.z);
@@ -1454,7 +1481,7 @@ __kernel void process_photo(
         float rrr = rr*cr;
         float ggg = gg*cg;
         float bbb = bb*cb;
-        lt /= pow(10.0f, rrr + ggg + bbb);
+        lt /= pow(10.0f, opts->extra.paper_contrast * (rrr + ggg + bbb));
 
         if (opts->extra.pixel == idx) {
             printf("%f\n", lt);
@@ -1480,7 +1507,7 @@ __kernel void process_photo(
         printf("srgb result for gray: %.2f %.2f %.2f\n", c.x, c.y, c.z);
     }
     */
-    img[idx] = c;
+    out_img[out_idx] = c;
     //img[idx] = (float4)(q, q, q, 0);
 }
 

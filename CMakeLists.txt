@@ -16,6 +16,7 @@ set(SOURCES
     src/cldriver.cc
     src/photo_process_opts.cc
     src/film.cc
+    src/frame.cc
 )
 set(EXTRA_SOURCES
         third-party/imgui/imgui.cpp

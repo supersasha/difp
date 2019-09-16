@@ -80,7 +80,7 @@ Rgb32Image convert_image_to_rgb32(const Image& img)
     return img32;
 }
 
-Image bilinear_scale(const Image& src_img, int fit_width, int fit_height)
+IntSize fit(const Image& src_img, int fit_width, int fit_height)
 {
     std::size_t new_width = 0;
     std::size_t new_height = 0;
@@ -99,27 +99,22 @@ Image bilinear_scale(const Image& src_img, int fit_width, int fit_height)
             new_width = src_img.width * fit_height / src_img.height;
         }
     }
+    return IntSize{ fit_width, fit_height };
+}
     
+Image bilinear_scale(const Image& src_img, int new_width, int new_height)
+{
+    /*
     std::cout << "width: " << src_img.width << "\n";
     std::cout << "height: " << src_img.height << "\n";
 
     std::cout << "new width: " << new_width << "\n";
     std::cout << "new height: " << new_height << "\n";
+    */
 
     Image img(new_width, new_height);
 
     // bilinear interpolation
-
-    /*
-    float w_step = float(m_width - 1) / (new_width - 1);
-    float h_step = float(m_height - 1) / (new_height - 1);
-
-    std::cout << "w_step = " << w_step << "\n";
-    std::cout << "h_step = " << h_step << "\n";
-
-    int ggg = 0;
-    */
-
     for (int h = 0; h < new_height; h++) {
         for (int w = 0; w < new_width; w++) {
             float x = w * (src_img.width - 1) / (new_width - 1);
@@ -151,40 +146,6 @@ Image bilinear_scale(const Image& src_img, int fit_width, int fit_height)
             img.data[h * new_width + w] = c;
         }
     }
-    
-    /*
-    for(float h = 0.0; h < m_height - 1 + 0.1; h += h_step) {
-        if(h >= m_height - 1)
-            h = m_height - 1 - 0.01;
-        std::size_t ih = ((std::size_t)h) * m_width;
-        float hh = std::floor(h);
-        for(float w = 0.0; w < m_width - 1 + 0.1; w += w_step) {
-            if(w >= m_width - 1)
-                w = m_width - 1 - 0.01;
-            std::size_t iw = (std::size_t)w;
-            float ww = std::floor(w);
-            auto c00 = (*m_data)[ih + iw];
-            auto c01 = (*m_data)[ih + m_width + iw];
-            auto c10 = (*m_data)[ih + iw + 1];
-            auto c11 = (*m_data)[ih + m_width + iw + 1];
-
-            float q00 = (ww + 1 - w) * (hh + 1 - h);
-            float q10 = (w - ww) * (hh + 1 - h);
-            float q01 = (ww + 1 - w) * (h - hh);
-            float q11 = (w - ww) * (h - hh);
-
-            img.m_data->emplace_back(ColorF(
-                c00.c[0]*q00 + c01.c[0]*q01 + c10.c[0]*q10 + c11.c[0]*q11, 
-                c00.c[1]*q00 + c01.c[1]*q01 + c10.c[1]*q10 + c11.c[1]*q11, 
-                c00.c[2]*q00 + c01.c[2]*q01 + c10.c[2]*q10 + c11.c[2]*q11
-            ));
-
-            ggg++;
-        }
-    }
-    */
-
-    //std::cout << "scaled to " << ggg << "\n"; 
     return img;
 }
 

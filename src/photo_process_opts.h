@@ -15,6 +15,7 @@ struct Extra
     float psg;
     float psb;
     float linear_amp;
+    float layer2d;
 
     float cy;
     float cm;
@@ -24,6 +25,10 @@ struct Extra
     int data;
 
     int pixel;
+    int frame_horz = 0;
+    int frame_vert = 0;
+    float film_contrast = 1.0;
+    float paper_contrast = 1.0;
 };
 
 struct CharacteristicCurve

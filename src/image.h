@@ -3,6 +3,7 @@
 #include <string>
 #include <string.h>
 #include "rgb32_image.h"
+#include "utils.h"
 
 struct Color
 {
@@ -29,7 +30,7 @@ struct Image
     Image(int w, int h)
         : width(w), height(h)
     {
-        data = new Color[width * h];
+        data = new Color[w * h];
     }
 
     Image(const Image&) = delete;
@@ -61,6 +62,24 @@ struct Image
         return img;
     }
 
+    void resize(int w, int h)
+    {
+        width = w;
+        height = h;
+
+        if (data) {
+            delete[] data;
+        }
+
+        if (w > 0 && h > 0) {
+            data = new Color[w * h];
+        } else {
+            w = 0;
+            h = 0;
+            data = nullptr;
+        }
+    }
+
     ~Image()
     {
         if (data) {
@@ -71,6 +90,8 @@ struct Image
 
 Image load_image_from_raw_file(const std::string& filename);
 Rgb32Image convert_image_to_rgb32(const Image& img);
-Image bilinear_scale(const Image&, int fit_width, int fit_height);
+
+IntSize fit(int width, int height, int fit_width, int fit_height);
+Image bilinear_scale(const Image&, int width, int height);
 
 Image sub_image(const Image&, int left, int top, int width, int height);
