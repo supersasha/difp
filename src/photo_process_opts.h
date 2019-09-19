@@ -29,6 +29,8 @@ struct Extra
     int frame_vert = 0;
     float film_contrast = 1.0;
     float paper_contrast = 1.0;
+    float light_through_film = 0.0;
+    float light_on_paper = 0.0;
 };
 
 struct CharacteristicCurve

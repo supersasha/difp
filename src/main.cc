@@ -37,8 +37,8 @@ public:
     const int SMALL_HEIGHT = 1000; //960;
     Rgb32Image processImage(Image& image, const ProcessingOptions& po) //int x = -1, int y = -1)
     {
-        std::string filmFile = "profiles/film/kodak-portra-400-new-v1.film"; //"profiles/film/kodak-portra-400-v5.phm.film";
-        std::string paperFile = "profiles/paper/kodak-endura-new-v1.paper"; //"profiles/paper/kodak-endura-experim.phm.paper";
+        std::string filmFile = "profiles/film/kodak-portra-400-new-v2.film"; //"profiles/film/kodak-portra-400-v5.phm.film";
+        std::string paperFile = "profiles/paper/kodak-endura-new-v2.paper"; //"profiles/paper/kodak-endura-experim.phm.paper";
 
         PhotoProcessOpts opts;
         opts.exposure_correction_film = m_filmExposure;
@@ -85,6 +85,8 @@ public:
         opts.extra.frame_vert = po.frame_vert;
         opts.extra.film_contrast = m_filmContrast;
         opts.extra.paper_contrast = m_paperContrast;
+        opts.extra.light_through_film = m_lightThroughFilm;
+        opts.extra.light_on_paper = m_lightOnPaper;
 
         auto processedImage = process_photo(image, opts);
         Rgb32Image img = convert_image_to_rgb32(processedImage);
@@ -232,25 +234,31 @@ public:
             }
         }
         ImGui::Text("%s", selectedPath.c_str());
-        if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -3, 0, "%.2f")) {
+        if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -10, 10, "%.2f")) {
+            processSmallImage();
+        }
+        if (ImGui::SliderFloat("Light through film", &m_lightThroughFilm, -10, 10, "%.2f")) {
             processSmallImage();
         }
         if (ImGui::Checkbox("Film only", &m_filmOnly)) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -4, -2, "%.2f")) {
+        if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -10, 10, "%.2f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Red", &m_red, 0, 0.8, "%.3f")) {
+        if (ImGui::SliderFloat("Light on paper", &m_lightOnPaper, -10, 10, "%.2f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 0.6 /*0.8*/, "%.3f")) {
+        if (ImGui::SliderFloat("Red", &m_red, 0, 10, "%.3f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 0.9 /*1.5*/, "%.3f")) {
+        if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 10 /*0.8*/, "%.3f")) {
             processSmallImage();
         }
-        if (ImGui::SliderFloat("Linear AMP", &m_linAmp, 1, 500, "%.1f")) {
+        if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 10 /*1.5*/, "%.3f")) {
+            processSmallImage();
+        }
+        if (ImGui::SliderFloat("Linear AMP", &m_linAmp, 1, 500000000, "%.1f")) {
             processSmallImage();
         }
         /*
@@ -346,6 +354,8 @@ private:
     char m_saveSuffix[16] = "-15x20-f10";
     float m_filmContrast = 1.0;
     float m_paperContrast = 1.0;
+    float m_lightThroughFilm = 0.0;
+    float m_lightOnPaper = 0.0;
 };
 
 int main(int, char**)
