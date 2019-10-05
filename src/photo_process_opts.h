@@ -31,6 +31,30 @@ struct Extra
     float paper_contrast = 1.0;
     float light_through_film = 0.0;
     float light_on_paper = 0.0;
+    float paper_filter[3];
+};
+
+struct Debug
+{
+    std::array<float, SPECTRUM_SIZE> spectrum;
+    std::array<float, SPECTRUM_SIZE> film_fall_spectrum;
+    std::array<float, SPECTRUM_SIZE> film_pass_spectrum;
+    std::array<float, SPECTRUM_SIZE> film_fltr_spectrum;
+    std::array<float, SPECTRUM_SIZE> paper_fall_spectrum;
+    std::array<float, SPECTRUM_SIZE> paper_refl_spectrum;
+    std::array<float, 3> xyz_in;
+
+    std::array<float, 3> film_exposure;
+    std::array<float, 3> film_density;
+    std::array<float, 3> film_density2;
+    std::array<float, 3> film_tdensity;
+
+    std::array<float, 3> paper_exposure;
+    std::array<float, 3> paper_density;
+    std::array<float, 3> paper_tdensity;
+
+    std::array<float, 3> xyz_out;
+    std::array<float, 3> srgb_out;
 };
 
 struct CharacteristicCurve
@@ -42,7 +66,7 @@ struct CharacteristicCurve
     float bias;
     float smoothness;
 
-    std::array<Spline::S, 30> spline;
+    std::array<Spline::S, 100> spline;
     
     float log_density(float x, float exposure_correction = 0) const
     {
@@ -100,6 +124,7 @@ struct PhotoProcessOpts
     PhotoMaterial paper;
 
     Extra extra;
+    Debug debug;
 
     float exposure_correction_film;
     float exposure_correction_paper;

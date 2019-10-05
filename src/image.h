@@ -4,19 +4,7 @@
 #include <string.h>
 #include "rgb32_image.h"
 #include "utils.h"
-
-struct Color
-{
-    float c[4];
-
-    Color() {}
-    Color(float r, float g, float b)
-    {
-        c[0] = r;
-        c[1] = g;
-        c[2] = b;
-    }
-};
+#include "color.h"
 
 struct Image
 {
@@ -95,3 +83,5 @@ IntSize fit(int width, int height, int fit_width, int fit_height);
 Image bilinear_scale(const Image&, int width, int height);
 
 Image sub_image(const Image&, int left, int top, int width, int height);
+
+Image gradient(int width, int height, const Color& from, const Color& to);

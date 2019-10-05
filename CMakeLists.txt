@@ -17,6 +17,7 @@ set(SOURCES
     src/photo_process_opts.cc
     src/film.cc
     src/frame.cc
+    src/color.cc
 )
 set(EXTRA_SOURCES
         third-party/imgui/imgui.cpp

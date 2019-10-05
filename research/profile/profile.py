@@ -3,7 +3,6 @@ import numpy as np
 from scipy.interpolate import CubicSpline
 
 import illum
-from rgb import Rgb
 
 class FilmProfile:
     def __init__(self, p = None):

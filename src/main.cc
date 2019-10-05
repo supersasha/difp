@@ -6,6 +6,7 @@
 #include <fstream>
 #include <future>
 #include <chrono>
+#include <math.h>
 
 #include "imgui.h"
 
@@ -18,6 +19,8 @@
 #include "film.h"
 #include "frame.h"
 #include "measure.h"
+#include "cldriver.h"
+#include "color.h"
 
 #include <json.hpp>
 using json = nlohmann::json;
@@ -30,15 +33,30 @@ struct ProcessingOptions
     int pixel_y = -1;
 };
 
+void show_spectrum(const char * label, const float * spectrum, float scale = 1)
+{
+    ImGui::Text("%s:", label);
+    ImGui::PlotLines("", spectrum, SPECTRUM_SIZE,
+        0, nullptr, FLT_MAX, FLT_MAX, ImVec2(0, 80));
+    ImGui::SameLine();
+    Color xyz = spectrum_to_xyz(spectrum);
+    Color srgb = xyz_to_srgb(scale * xyz);
+    ImGui::ColorButton(label, *(ImVec4*)&srgb.c, 0, ImVec2(80, 80));
+}
+
 class DifpGui : public GuiBuilder
 {
 public:
     const int SMALL_WIDTH = 1400; // 1280;
     const int SMALL_HEIGHT = 1000; //960;
-    Rgb32Image processImage(Image& image, const ProcessingOptions& po) //int x = -1, int y = -1)
+    enum Mode {
+        MODE_IMAGE,
+        MODE_GRADIENT
+    };
+    Rgb32Image processImage(Image& image, const ProcessingOptions& po)
     {
-        std::string filmFile = "profiles/film/kodak-portra-400-new-v2.film"; //"profiles/film/kodak-portra-400-v5.phm.film";
-        std::string paperFile = "profiles/paper/kodak-endura-new-v2.paper"; //"profiles/paper/kodak-endura-experim.phm.paper";
+        std::string filmFile = "profiles/film/kodak-portra-400-new-v2.film";
+        std::string paperFile = "profiles/paper/kodak-endura-new-v3.paper";
 
         PhotoProcessOpts opts;
         opts.exposure_correction_film = m_filmExposure;
@@ -87,23 +105,27 @@ public:
         opts.extra.paper_contrast = m_paperContrast;
         opts.extra.light_through_film = m_lightThroughFilm;
         opts.extra.light_on_paper = m_lightOnPaper;
+        opts.extra.paper_filter[0] = m_paperFilter[0];
+        opts.extra.paper_filter[1] = m_paperFilter[1];
+        opts.extra.paper_filter[2] = m_paperFilter[2];
 
         auto processedImage = process_photo(image, opts);
+        m_debug = opts.debug;
         Rgb32Image img = convert_image_to_rgb32(processedImage);
         return img;
         //tex.load(img);
     }
 
-    void processSmallImage(int x = -1, int y = -1)
+    void processSmallImage()
     {
         if (m_inProcessingImage) {
             m_scheduleProcessImage = true;
         } else {
             m_inProcessingImage = true;
-            m_processImageFuture = std::async(std::launch::async, [&, x, y] {
+            m_processImageFuture = std::async(std::launch::async, [&] {
                 ProcessingOptions po;
-                po.pixel_x = x;
-                po.pixel_y = y;
+                po.pixel_x = m_pixelX;
+                po.pixel_y = m_pixelY;
                 if (m_isCrop) {
                     int sx = m_cropX * m_origImage.width / m_sizeWithFrame.x
                                 - SMALL_WIDTH / 2;
@@ -146,8 +168,16 @@ public:
                                 << wh.width << "x" << wh.height << "\n";
                         */
                         auto dt = measure([&]{
-                            m_smallImage = bilinear_scale(m_origImage,
+                            switch (m_mode) {
+                            case MODE_IMAGE:
+                                m_smallImage = bilinear_scale(m_origImage,
                                                           wh.width, wh.height);
+                                break;
+                            case MODE_GRADIENT:
+                                m_smallImage = gradient(wh.width, wh.height,
+                                    Color(0, 0, 0), Color(95.0/300, 100.0/300, 109.0/300));
+                                break;
+                            }
                         });
                         //std::cout << "Scaling time: " << dt << "s\n";
                     }
@@ -177,7 +207,11 @@ public:
             int y = pos.y - spos.y;
             //std::cout << "x = " << x << " y = " << y << "\n";
             if (ImGui::GetIO().KeyCtrl) {
-                processSmallImage(x, y);
+                if (!m_isCrop) {
+                    m_pixelX = x;
+                    m_pixelY = y;
+                    processSmallImage();
+                }
             } else {
                 if (!m_isCrop) {
                     m_cropX = x;
@@ -195,99 +229,191 @@ public:
     void buildParametersWindow()
     {
         ImGui::Begin("Parameters");
-
-        if (ImGui::Button("Open File Dialog")) {
-            openFileDialog = true;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Save")) {
-            std::string filename = fi.path();
-            filename += m_saveSuffix;
-            filename += ".dipp.jpg"; // Exposure and development
-            std::cout << "Saving to " << filename << "...\n";
-            auto image = m_origImage.clone();
-            ProcessingOptions po;
-            const PaperFormat& pf = get_paper_formats()[m_paperFormatIdx];
-            IntSize sz = outer_frame(pf,
-                image.width, image.height, m_frameWidthRatio);
-            po.frame_horz = sz.width;
-            po.frame_vert = sz.height;
-            auto rgb32Image = processImage(image, po);
-            Jpeg jpeg;
-            jpeg.save(rgb32Image, filename);
-            std::cout << "done\n";
-        }
-        if (openFileDialog) {
-            if (FileBrowser("Open file", fi)) {
-                if (fi.isConfirmed()) {
-                    m_origImage = load_image_from_raw_file(fi.path());
-                    m_smallImage.resize(0, 0);
-                    m_isCrop = false;
-
-                    processSmallImage();
-
-                    selectedPath = fi.path();
-                } else {
-                    //selectedPath = "";
-                }
-                openFileDialog = false;
+       
+        bool endTabBar = ImGui::BeginTabBar("TabBar1"); 
+        if (ImGui::BeginTabItem("Params")) {
+            if (ImGui::Button("Open File Dialog")) {
+                openFileDialog = true;
             }
-        }
-        ImGui::Text("%s", selectedPath.c_str());
-        if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -10, 10, "%.2f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Light through film", &m_lightThroughFilm, -10, 10, "%.2f")) {
-            processSmallImage();
-        }
-        if (ImGui::Checkbox("Film only", &m_filmOnly)) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -10, 10, "%.2f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Light on paper", &m_lightOnPaper, -10, 10, "%.2f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Red", &m_red, 0, 10, "%.3f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 10 /*0.8*/, "%.3f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 10 /*1.5*/, "%.3f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Linear AMP", &m_linAmp, 1, 500000000, "%.1f")) {
-            processSmallImage();
-        }
-        /*
-        if (ImGui::SliderFloat("2nd sub-layer delta", &m_layer2d, 0, 3, "%.2f")) {
-            processSmallImage();
-        }
-        */
+            ImGui::SameLine();
+            if (ImGui::Button("Save")) {
+                std::string filename = fi.path();
+                filename += m_saveSuffix;
+                filename += ".dipp.jpg"; // Exposure and development
+                std::cout << "Saving to " << filename << "...\n";
+                auto image = m_origImage.clone();
+                ProcessingOptions po;
+                const PaperFormat& pf = get_paper_formats()[m_paperFormatIdx];
+                IntSize sz = outer_frame(pf,
+                    image.width, image.height, m_frameWidthRatio);
+                po.frame_horz = sz.width;
+                po.frame_vert = sz.height;
+                auto rgb32Image = processImage(image, po);
+                Jpeg jpeg;
+                jpeg.save(rgb32Image, filename);
+                std::cout << "done\n";
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reload")) {
+                CLDriver::get().reload();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Apply")) {
+                processSmallImage();
+            }
+            if (openFileDialog) {
+                if (FileBrowser("Open file", fi)) {
+                    if (fi.isConfirmed()) {
+                        m_origImage = load_image_from_raw_file(fi.path());
+                        m_smallImage.resize(0, 0);
+                        m_isCrop = false;
 
-        const auto& formats = get_paper_formats();
-        std::vector<const char*> items;
-        for (const auto& f: formats) {
-            items.emplace_back(f.name.c_str());
+                        processSmallImage();
+
+                        selectedPath = fi.path();
+                    } else {
+                        //selectedPath = "";
+                    }
+                    openFileDialog = false;
+                }
+            }
+            ImGui::Text("%s", selectedPath.c_str());
+            if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -5, 5, "%.2f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Light through film", &m_lightThroughFilm, -5, 5, "%.2f")) {
+                processSmallImage();
+            }
+            if (ImGui::Checkbox("Film only", &m_filmOnly)) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -5, 5, "%.2f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Light on paper", &m_lightOnPaper, -5, 5, "%.2f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Red", &m_red, 0, 2, "%.3f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 2 /*0.8*/, "%.3f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 2 /*1.5*/, "%.3f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Linear AMP", &m_linAmp, -2, 1, "%.2f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("P. Red", m_paperFilter, 0, 2, "%.3f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("P. Green", m_paperFilter + 1, 0, 2, "%.3f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("P. Blue", m_paperFilter + 2, 0, 2, "%.3f")) {
+                processSmallImage();
+            }
+            /*
+            if (ImGui::SliderFloat("2nd sub-layer delta", &m_layer2d, 0, 3, "%.2f")) {
+                processSmallImage();
+            }
+            */
+
+            const auto& formats = get_paper_formats();
+            std::vector<const char*> items;
+            for (const auto& f: formats) {
+                items.emplace_back(f.name.c_str());
+            }
+            if(ImGui::Combo("Paper format", &m_paperFormatIdx,
+                items.data(), items.size()))
+            {
+                //handleFrameChange(formats[m_paperFormatIdx]);
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Frame/Width", &m_frameWidthRatio, 0, 0.3, "%.3f")) {
+                //handleFrameChange(formats[m_paperFormatIdx]);
+                processSmallImage();
+            }
+            ImGui::InputText("Save suffix", m_saveSuffix, sizeof(m_saveSuffix));
+            /*
+            if (ImGui::SliderFloat("Film contrast", &m_filmContrast, 0.1, 2, "%.2f")) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Paper contrast", &m_paperContrast, 0.1, 2, "%.2f")) {
+                processSmallImage();
+            }
+            */
+            if (ImGui::RadioButton("Image", m_mode == MODE_IMAGE)) {
+                m_mode = MODE_IMAGE;
+                processSmallImage();
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Gradient", m_mode == MODE_GRADIENT)) {
+                m_mode = MODE_GRADIENT;
+                processSmallImage();
+            }
+            ImGui::EndTabItem();
         }
-        if(ImGui::Combo("Paper format", &m_paperFormatIdx,
-            items.data(), items.size()))
-        {
-            //handleFrameChange(formats[m_paperFormatIdx]);
-            processSmallImage();
+        if (ImGui::BeginTabItem("Debug")) {
+            ImGui::Text("XYZ in: %f, %f, %f",
+                m_debug.xyz_in[0],
+                m_debug.xyz_in[1],
+                m_debug.xyz_in[2]);
+            show_spectrum("Spectrum", m_debug.spectrum.data(), 300);
+            ImGui::Text("Film exposure: %f, %f, %f",
+                m_debug.film_exposure[0],
+                m_debug.film_exposure[1],
+                m_debug.film_exposure[2]);
+            ImGui::Text("Film exposure (log + corr): %f, %f, %f",
+                log10(m_debug.film_exposure[0]) + m_filmExposure,
+                log10(m_debug.film_exposure[1]) + m_filmExposure,
+                log10(m_debug.film_exposure[2]) + m_filmExposure);
+            ImGui::Text("Film density: %f, %f, %f",
+                m_debug.film_density[0],
+                m_debug.film_density[1],
+                m_debug.film_density[2]);
+            ImGui::Text("Film density2: %f, %f, %f",
+                m_debug.film_density2[0],
+                m_debug.film_density2[1],
+                m_debug.film_density2[2]);
+            ImGui::Text("Film true density: %f, %f, %f",
+                m_debug.film_tdensity[0],
+                m_debug.film_tdensity[1],
+                m_debug.film_tdensity[2]);
+            show_spectrum("Film fall spectrum", m_debug.film_fall_spectrum.data());
+            show_spectrum("Film pass spectrum", m_debug.film_pass_spectrum.data());
+            show_spectrum("Film fltr spectrum", m_debug.film_fltr_spectrum.data());
+            ImGui::Text("Paper exposure: %f, %f, %f",
+                m_debug.paper_exposure[0],
+                m_debug.paper_exposure[1],
+                m_debug.paper_exposure[2]);
+            ImGui::Text("Paper exposure (log + corr): %f, %f, %f",
+                log10(m_debug.paper_exposure[0]) + m_paperExposure,
+                log10(m_debug.paper_exposure[1]) + m_paperExposure,
+                log10(m_debug.paper_exposure[2]) + m_paperExposure);
+            ImGui::Text("Paper density: %f, %f, %f",
+                m_debug.paper_density[0],
+                m_debug.paper_density[1],
+                m_debug.paper_density[2]);
+            ImGui::Text("Paper true density: %f, %f, %f",
+                m_debug.paper_tdensity[0],
+                m_debug.paper_tdensity[1],
+                m_debug.paper_tdensity[2]);
+            show_spectrum("Paper fall spectrum", m_debug.paper_fall_spectrum.data(), 0.2);
+            show_spectrum("Paper refl spectrum", m_debug.paper_refl_spectrum.data());
+            ImGui::Text("XYZ out: %f, %f, %f",
+                m_debug.xyz_out[0],
+                m_debug.xyz_out[1],
+                m_debug.xyz_out[2]);
+            ImGui::Text("sRGB out: %f, %f, %f",
+                m_debug.srgb_out[0],
+                m_debug.srgb_out[1],
+                m_debug.srgb_out[2]);
+            ImGui::EndTabItem();
         }
-        if (ImGui::SliderFloat("Frame/Width", &m_frameWidthRatio, 0, 0.3, "%.3f")) {
-            //handleFrameChange(formats[m_paperFormatIdx]);
-            processSmallImage();
-        }
-        ImGui::InputText("Save suffix", m_saveSuffix, sizeof(m_saveSuffix));
-        if (ImGui::SliderFloat("Film contrast", &m_filmContrast, 0.1, 2, "%.2f")) {
-            processSmallImage();
-        }
-        if (ImGui::SliderFloat("Paper contrast", &m_paperContrast, 0.1, 2, "%.2f")) {
-            processSmallImage();
+        if (endTabBar) {
+            ImGui::EndTabBar();
         }
         ImGui::End();
     }
@@ -332,11 +458,11 @@ private:
 
     Image m_origImage;
     Image m_smallImage;
-    float m_filmExposure = -2.5;
-    float m_paperExposure = -3.18;
-    float m_red = 0.00;
-    float m_green = 0.457; //0.438;
-    float m_blue = 0.744; //0.765;
+    float m_filmExposure = -1.85;
+    float m_paperExposure = -1.48; //-3.18;
+    float m_red = 0;
+    float m_green = 0.270; //0.349; //0.57; //0.457; //0.438;
+    float m_blue = 0.569; //0.614; //0.8; //0.744; //0.765;
 
     bool m_inProcessingImage = false;
     bool m_scheduleProcessImage = false;
@@ -345,7 +471,9 @@ private:
     bool m_isCrop = false;
     int m_cropX = 0;
     int m_cropY = 0;
-    float m_linAmp = 428.5;
+    int m_pixelX = 0;
+    int m_pixelY = 0;
+    float m_linAmp = 0.0; //428.5;
     bool m_filmOnly = false;
     float m_layer2d = 1.2;
     int m_paperFormatIdx = 10;
@@ -354,8 +482,11 @@ private:
     char m_saveSuffix[16] = "-15x20-f10";
     float m_filmContrast = 1.0;
     float m_paperContrast = 1.0;
-    float m_lightThroughFilm = 0.0;
-    float m_lightOnPaper = 0.0;
+    float m_lightThroughFilm = -1.62;
+    float m_lightOnPaper = -1.14;
+    Debug m_debug;
+    Mode m_mode = MODE_IMAGE;
+    float m_paperFilter[3] = {0, 0.394, 0.310}; //{0, 0.361, 0.248}; //{0, 0.152, 0.056};
 };
 
 int main(int, char**)

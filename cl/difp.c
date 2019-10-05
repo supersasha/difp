@@ -940,6 +940,27 @@ struct Extra
     float paper_contrast;
     float light_through_film;
     float light_on_paper;
+    float paper_filter[3];
+};
+
+struct Debug
+{
+    float spectrum[SPECTRUM_SIZE];
+    float film_fall_spectrum[SPECTRUM_SIZE];
+    float film_pass_spectrum[SPECTRUM_SIZE];
+    float film_fltr_spectrum[SPECTRUM_SIZE];
+    float paper_fall_spectrum[SPECTRUM_SIZE];
+    float paper_refl_spectrum[SPECTRUM_SIZE];
+    float xyz_in[3];
+    float film_exposure[3];
+    float film_density[3];
+    float film_density2[3];
+    float film_tdensity[3];
+    float paper_exposure[3];
+    float paper_density[3];
+    float paper_tdensity[3];
+    float xyz_out[3];
+    float srgb_out[3];
 };
 
 struct SplineS
@@ -956,7 +977,7 @@ struct CharacteristicCurve
     float bias;
     float smoothness;
 
-    struct SplineS spline[30];
+    struct SplineS spline[100];
 };
 
 struct Illuminant
@@ -1006,6 +1027,7 @@ struct PhotoProcessOpts
     struct PhotoMaterial paper;
 
     struct Extra extra;
+    struct Debug debug;
 
     float exposure_correction_film;
     float exposure_correction_paper;
@@ -1026,14 +1048,27 @@ float4 xyz_to_linear_srgb_scalar(float4 c)
 
 float4 xyz_to_ciergb_scalar(float4 c)
 {
+    /*
     float x = c.x / 100.0f;
     float y = c.y / 100.0f;
     float z = c.z / 100.0f;
+    */
     
     return (float4) (
-        0.41847f * x - 0.15866f * y - 0.082835f * z,
-        -0.091169f * x + 0.25243f * y + 0.015708f * z,
-        0.00092090f * x - 0.0025498f * y + 0.17860f * z,
+        0.41847f    * c.x - 0.15866f   * c.y - 0.082835f * c.z,
+        -0.091169f  * c.x + 0.25243f   * c.y + 0.015708f * c.z,
+        0.00092090f * c.x - 0.0025498f * c.y + 0.17860f  * c.z,
+        0.0f
+    );
+}
+
+float4 ciergb_to_xyz_scalar(float4 c)
+{
+    float q = 1.0f / 0.17697f;
+    return q * (float4) (
+        0.49000f * c.x + 0.31000f * c.y + 0.20000f * c.z,
+        0.17697f * c.x + 0.81240f * c.y + 0.01063f * c.z,
+        0.00000f * c.x + 0.01000f * c.y + 0.99000f * c.z,
         0.0f
     );
 }
@@ -1058,6 +1093,11 @@ float log_density(
         for (int i = c->nodes_cnt - 1; i >= 0; i--) {
             struct SplineS ss = c->spline[i];
             if (x >= ss.x) {
+                /*
+                if (i == c->nodes_cnt - 1) {
+                    return ss.a;
+                }
+                */
                 float dx = x - ss.x;
                 return ((ss.d * dx + ss.c) * dx + ss.b) * dx + ss.a;
             }
@@ -1105,23 +1145,25 @@ float4 dye_absorbtion(int i, float4 density, struct PhotoProcessOpts * opts)
     );
 }
 
-float4 rgb_to_exposure(float4 rgb, struct PhotoProcessOpts * opts)
+float4 rgb_to_exposure_debug(float4 rgb, struct PhotoProcessOpts * opts, int idx)
 {
     struct di_params p = calc_di_params(5500.0f);
     float4 exposure = (float4) (0, 0, 0, 0);
     for(int i = 0; i < SPECTRUM_SIZE; i++) {
         //printf("di: %f ", di);
-        /*
         float spectrum = rgb.x * E1931_78[i][0]
                        + rgb.y * E1931_78[i][1]
                        + rgb.z * E1931_78[i][2];
-        */
+        /*
         float spectrum = rgb.x * RHO[0][i]
                        + rgb.y * RHO[1][i]
                        + rgb.z * RHO[2][i];
+        */
+        /*
         if (spectrum < 0) {
             spectrum = 0;
         }
+        */
 
         //float di = daylight_illuminant(p, i);
         //spectrum *= di / 100.0f;
@@ -1148,9 +1190,23 @@ float4 rgb_to_exposure(float4 rgb, struct PhotoProcessOpts * opts)
         exposure.x += spectrum * (opts->film.red.sense.v[i] / pow(10, opts->film.red.theta));
         exposure.y += spectrum * (opts->film.green.sense.v[i] / pow(10, opts->film.green.theta));
         exposure.z += spectrum * (opts->film.blue.sense.v[i] / pow(10, opts->film.blue.theta));
+        
+        if (opts->extra.pixel == idx) {
+            opts->debug.spectrum[i] = spectrum;
+        }
     }
+    exposure = fix_exposure(exposure);
+    if (opts->extra.pixel == idx) {
+        opts->debug.film_exposure[0] = exposure.x;
+        opts->debug.film_exposure[1] = exposure.y;
+        opts->debug.film_exposure[2] = exposure.z;
+    }
+    return exposure;
+}
 
-    return fix_exposure(exposure);
+float4 rgb_to_exposure(float4 rgb, struct PhotoProcessOpts * opts)
+{
+    return rgb_to_exposure_debug(rgb, opts, -1);
 }
 
 float rgb_to_exposure_scalar(float4 rgb, struct SpectralSensitivity * sense)
@@ -1298,6 +1354,26 @@ float nneg(float x)
     return x;
 }
 
+float4 dye_qty(struct PhotoMaterial * pm, float4 density)
+{
+    float cr = pm->red.couplers[0] * density.x
+         + pm->green.couplers[1]
+            * pm->green.couplers[0] * (1 - density.y)
+         + pm->blue.couplers[2]
+            * pm->blue.couplers[0] * (1 - density.z);
+    float cg = pm->red.couplers[0]
+            * pm->red.couplers[1] * (1 - density.x)
+         + pm->green.couplers[1] * density.y
+         + pm->blue.couplers[2]
+            * pm->blue.couplers[1] * (1 - density.z);
+    float cb = pm->red.couplers[0]
+            * pm->red.couplers[2] * (1 - density.x)
+         + pm->green.couplers[1]
+            * pm->green.couplers[2] * (1 - density.y)
+         + pm->blue.couplers[2] * density.z;
+    return (float4) (cr, cg, cb, 0);
+}
+
 /*
  * 1. Image XYZ -> Spectrum
  * 2. Spectrum, <<Spectral sensitivity (film)>> -> Exposure
@@ -1349,99 +1425,149 @@ __kernel void process_photo(
 
     int es = opts->extra.stop;
     
-    float4 px = (idx == 0) ? srgb_to_xyz_scalar((float4)(0.01f, 0.01f, 0.01f, 0.0f))
-                           : img[idx];
-    float4 lrgb = xyz_to_linear_srgb_scalar(px);
-    //lrgb = pow(lrgb, 0.8f);
-    float4 exposure = rgb_to_exposure(lrgb, opts);
+    //float4 px = (idx == 0) ? srgb_to_xyz_scalar((float4)(0.01f, 0.01f, 0.01f, 0.0f)) : img[idx];
+    float4 px = img[idx];
+    //float4 lrgb = xyz_to_linear_srgb_scalar(px);
+    float4 lrgb = px;//xyz_to_ciergb_scalar(px);
+    float4 exposure = rgb_to_exposure_debug(lrgb, opts, idx);
 
     float4 density = exposure_to_density(exposure, opts, 1.0f, 0);
 
-#if 0
+#define SUBLAYERS 1
+#if SUBLAYERS
     density.x *= exp(-0.25f * density.x);
     density.y *= exp(-0.25f * density.y);
     density.z *= exp(-0.25f * density.z);
     float4 density2 = exposure_to_density(exposure, opts, 1.0f, opts->extra.layer2d);
 #endif
 
+    if (opts->extra.pixel == idx) {
+        opts->debug.xyz_in[0] = px.x;
+        opts->debug.xyz_in[1] = px.y;
+        opts->debug.xyz_in[2] = px.z;
+
+        opts->debug.film_density[0] = density.x;
+        opts->debug.film_density[1] = density.y;
+        opts->debug.film_density[2] = density.z;
+#if SUBLAYERS
+        opts->debug.film_density2[0] = density2.x;
+        opts->debug.film_density2[1] = density2.y;
+        opts->debug.film_density2[2] = density2.z;
+#endif
+    }
+
     exposure = (float4)(0, 0, 0, 0);
     float4 xyz = (float4)(0, 0, 0, 0);
+    /*
+    float cr = opts->film.red.couplers[0] * density.x
+             + opts->film.green.couplers[1] * (1-density.y)
+                * opts->film.green.couplers[0]
+             + opts->film.blue.couplers[2] * (1-density.z)
+                * opts->film.blue.couplers[0];
+    float cg = opts->film.red.couplers[0] * (1-density.x)
+                * opts->film.red.couplers[1]
+             + opts->film.green.couplers[1] * density.y
+             + opts->film.blue.couplers[2] * (1-density.z)
+                * opts->film.blue.couplers[1];
+    float cb = opts->film.red.couplers[0] * (1-density.x)
+                * opts->film.red.couplers[2]
+             + opts->film.green.couplers[1] * (1-density.y)
+                * opts->film.green.couplers[2]
+             + opts->film.blue.couplers[2] * density.z;
+    */
+    float4 z = (float4)(0, 0, 0, 0);
+    float4 cf1 = dye_qty(&opts->film, density); //- dye_qty(&opts->film, z);
+
+#if SUBLAYERS
+    /*
+    float cr2 = opts->film.red.couplers[0] * density2.x
+             + opts->film.green.couplers[1] * (1-density2.y)
+                * opts->film.green.couplers[0]
+             + opts->film.blue.couplers[2] * (1-density2.z)
+                * opts->film.blue.couplers[0];
+    float cg2 = opts->film.red.couplers[0] * (1-density2.x)
+                * opts->film.red.couplers[1]
+             + opts->film.green.couplers[1] * density2.y
+             + opts->film.blue.couplers[2] * (1-density2.z)
+                * opts->film.blue.couplers[1];
+    float cb2 = opts->film.red.couplers[0] * (1-density2.x)
+                * opts->film.red.couplers[2]
+             + opts->film.green.couplers[1] * (1-density2.y)
+                * opts->film.green.couplers[2]
+             + opts->film.blue.couplers[2] * density2.z;
+    */
+    float4 cf2 = dye_qty(&opts->film, density2); // - dye_qty(&opts->film, z);
+#else
+    /*
+    float cr2 = cr;
+    float cg2 = cg;
+    float cb2 = cb;
+    */
+    float4 cf2 = cf1;
+
+#endif
+    /*
+    if (cr < 0) { cr = 0; }
+    if (cg < 0) { cg = 0; }
+    if (cb < 0) { cb = 0; }
+    if (cr2 < 0) { cr2 = 0; }
+    if (cg2 < 0) { cg2 = 0; }
+    if (cb2 < 0) { cb2 = 0; }
+    */
+
+    float j = 0.7f;
+    /*
+    float rrr = (j*cr + (1-j)*cr2);
+    float ggg = (j*cg + (1-j)*cg2);
+    float bbb = (j*cb + (1-j)*cb2);
+    */
+    float4 cf = j*cf1 + (1-j)*cf2;
+    if (opts->extra.pixel == idx) {
+        opts->debug.film_tdensity[0] = cf.x; //rrr;
+        opts->debug.film_tdensity[1] = cf.y; //ggg;
+        opts->debug.film_tdensity[2] = cf.z; //bbb;
+    }
     for(int i = 0; i < SPECTRUM_SIZE; i++) {
         float lt = opts->illuminant1.v[i] *
                    pow(10.0f, opts->extra.light_through_film);
+
+        if (opts->extra.pixel == idx) {
+            opts->debug.film_fall_spectrum[i] = lt;
+        }
         float rr = opts->film.red.dye.v[i];
         float gg = opts->film.green.dye.v[i];
         float bb = opts->film.blue.dye.v[i];
 
-        float cr = opts->film.red.couplers[0] * (
-                   density.x * rr
-                 + (1-density.x) * opts->film.red.couplers[1] * gg
-                 + (1-density.x) * opts->film.red.couplers[2] * bb);
-        
-        float cg = opts->film.green.couplers[1] * (
-                   (1-density.y) * opts->film.green.couplers[0] * rr
-                 + density.y * gg
-                 + (1-density.y) * opts->film.green.couplers[2] * bb);
+        lt /= pow(10.0f,
+              rr*(cf.x) 
+            + gg*(cf.y)
+            + bb*(cf.z));
+        if (opts->extra.pixel == idx) {
+            opts->debug.film_pass_spectrum[i] = lt;
+        }
 
-        float cb = opts->film.blue.couplers[2] * (
-                   (1-density.z) * opts->film.blue.couplers[0] * rr
-                 + (1-density.z) * opts->film.blue.couplers[1] * gg
-                 + density.z * bb);
-
-#if 0
-   
-        float cr2 = opts->film.red.couplers[0] * (
-                    density2.x * rr
-                 + (1-density2.x) * opts->film.red.couplers[1] * gg
-                 + (1-density2.x) * opts->film.red.couplers[2] * bb);
-        
-        float cg2 = opts->film.green.couplers[1] * (
-                  (1-density2.y) * opts->film.green.couplers[0] * rr
-                 + density2.y * gg
-                 + (1-density2.y) * opts->film.green.couplers[2] * bb);
-
-        float cb2 = opts->film.blue.couplers[2] * (
-                   (1-density2.z) * opts->film.blue.couplers[0] * rr
-                 + (1-density2.z) * opts->film.blue.couplers[1] * gg
-                 + density2.z * bb);
-#else
-        float cr2 = cr;
-        float cg2 = cg;
-        float cb2 = cb;
-#endif
-        /*
-        if (cr < 0) { cr = 0; }
-        if (cg < 0) { cg = 0; }
-        if (cb < 0) { cb = 0; }
-        if (cr2 < 0) { cr2 = 0; }
-        if (cg2 < 0) { cg2 = 0; }
-        if (cb2 < 0) { cb2 = 0; }
-        */
-
-        float j = 0.7f;
-        /*
-        float rrr = rr*(j*cr + (1-j)*cr2);
-        float ggg = gg*(j*cg + (1-j)*cg2);
-        float bbb = bb*(j*cb + (1-j)*cb2);
-        
-        lt /= pow(10.0f, opts->extra.film_contrast * (rrr + ggg + bbb)); 
-        */
-        lt /= pow(10.0f, cr + cg + cb);
+        //lt /= pow(10.0f, cr + cg + cb);
         /*
            + CC_FILTER[0][i]*opts->extra.psr
            + CC_FILTER[1][i]*opts->extra.psg
            + CC_FILTER[2][i]*opts->extra.psb);
         */
         if (!opts->extra.stop) {
-            /*
             lt /= pow(10.0f,
                     ((i >= 0  && i < 26) ? 1.0f : 0.0f) * opts->extra.psb +
                     ((i >= 26 && i < 40) ? 1.0f : 0.0f) * opts->extra.psg +
                     ((i >= 40 && i < 65) ? 1.0f : 0.0f) * opts->extra.psr);
+            /*
+            float r = lt / pow(10.0f, opts->extra.psr);
+            float g = lt / pow(10.0f, opts->extra.psg);
+            float b = lt / pow(10.0f, opts->extra.psb);
             */
-            exposure.x += lt * opts->paper.red.sense.v[i] * pow(10.0f, opts->extra.psr);
-            exposure.y += lt * opts->paper.green.sense.v[i] * pow(10.0f, opts->extra.psg);
-            exposure.z += lt * opts->paper.blue.sense.v[i] * pow(10.0f, opts->extra.psb);
+            exposure.x += lt * opts->paper.red.sense.v[i];
+            exposure.y += lt * opts->paper.green.sense.v[i];
+            exposure.z += lt * opts->paper.blue.sense.v[i];
+            if (opts->extra.pixel == idx) {
+                opts->debug.film_fltr_spectrum[i] = lt;
+            }
         } else {
             xyz.x += lt * A1931_78[i][0];
             xyz.y += lt * A1931_78[i][1];
@@ -1461,16 +1587,55 @@ __kernel void process_photo(
     }
     img[idx] = exposure;
     */
-    density = exposure_to_density_paper(exposure, opts, 1.0f);
+    density = opts->extra.paper_contrast * exposure_to_density_paper(exposure, opts, 1.0f);
+    
+    /*
+    cr = opts->paper.red.couplers[0] * density.x
+         + opts->paper.green.couplers[1]
+            * opts->paper.green.couplers[0] * (1 - density.y)
+         + opts->paper.blue.couplers[2]
+            * opts->paper.blue.couplers[0] * (1 - density.z);
+    cg = opts->paper.red.couplers[0]
+            * opts->paper.red.couplers[1] * (1 - density.x)
+         + opts->paper.green.couplers[1] * density.y
+         + opts->paper.blue.couplers[2]
+            * opts->paper.blue.couplers[1] * (1 - density.z);
+    cb = opts->paper.red.couplers[0]
+            * opts->paper.red.couplers[2] * (1 - density.x)
+         + opts->paper.green.couplers[1]
+            * opts->paper.green.couplers[2] * (1 - density.y)
+         + opts->paper.blue.couplers[2] * density.z;
+    */
+    float4 cp = dye_qty(&opts->paper, density);
+    float4 cpz = dye_qty(&opts->paper, z);
+
+    if (opts->extra.pixel == idx) {
+        opts->debug.paper_exposure[0] = exposure.x;
+        opts->debug.paper_exposure[1] = exposure.y;
+        opts->debug.paper_exposure[2] = exposure.z;
+
+        opts->debug.paper_density[0] = density.x;
+        opts->debug.paper_density[1] = density.y;
+        opts->debug.paper_density[2] = density.z;
+
+        opts->debug.paper_tdensity[0] = cp.x; //cr;
+        opts->debug.paper_tdensity[1] = cp.y; //cg;
+        opts->debug.paper_tdensity[2] = cp.z; //cb;
+    }
+
     for(int i = 0; i < SPECTRUM_SIZE; i++) {
         float lt = opts->illuminant2.v[i] *
                    pow(10.0f, opts->extra.light_on_paper);
+        if (opts->extra.pixel == idx) {
+            opts->debug.paper_fall_spectrum[i] = lt;
+        }
         float rr = opts->paper.red.dye.v[i];
         float gg = opts->paper.green.dye.v[i];
         float bb = opts->paper.blue.dye.v[i];
 
         //lt /= pow(10.0f, 1.0f * (rr * density.x + gg * density.y + bb * density.z));
-
+        
+        /*
         float cr = opts->paper.red.couplers[0] * (
                     density.x * rr
                  + (1-density.x) * opts->paper.red.couplers[1] * gg
@@ -1483,6 +1648,8 @@ __kernel void process_photo(
                    (1-density.z) * opts->paper.blue.couplers[0] * rr
                  + (1-density.z) * opts->paper.blue.couplers[1] * gg
                  + density.z * bb);
+        */
+
         /*
         if (cr < 0) { cr = 0; }
         if (cg < 0) { cg = 0; }
@@ -1494,11 +1661,22 @@ __kernel void process_photo(
         lt /= pow(10.0f, opts->extra.paper_contrast * (rrr + ggg + bbb));
         */
 
-        lt /= pow(10.0f, cr + cg + cb);
-
+        //lt /= pow(10.0f, (cr*rr + cg*gg + cb*bb));
+        lt /= pow(10, ((cp.x) * rr + (cp.y) * gg + (cp.z) * bb));
+        lt *= pow(10.0f,
+                ((i >= 0  && i < 26) ? 1.0f : 0.0f) * opts->extra.paper_filter[2] +
+                ((i >= 26 && i < 40) ? 1.0f : 0.0f) * opts->extra.paper_filter[1] +
+                ((i >= 40 && i < 65) ? 1.0f : 0.0f) * opts->extra.paper_filter[0]);
+    
+        if (opts->extra.pixel == idx) {
+            opts->debug.paper_refl_spectrum[i] = lt;
+        }
+        
+        /*
         if (opts->extra.pixel == idx) {
             printf("%f\n", lt);
         }
+        */
 
         xyz.x += lt * A1931_78[i][0];
         xyz.y += lt * A1931_78[i][1];
@@ -1511,86 +1689,28 @@ __kernel void process_photo(
         //printf("L = %f\n", L);
     }
     */
-    float4 c = xyz_to_srgb_scalar(xyz /*/ 3000.0f * opts->extra.linear_amp*/);
+    float4 c = xyz_to_srgb_scalar(xyz * pow(10.0f, opts->extra.linear_amp) /*/ 3000.0f * opts->extra.linear_amp*/);
+    if (opts->extra.pixel == idx) {
+        opts->debug.xyz_out[0] = xyz.x;
+        opts->debug.xyz_out[1] = xyz.y;
+        opts->debug.xyz_out[2] = xyz.z;
+
+        opts->debug.srgb_out[0] = c.x;
+        opts->debug.srgb_out[1] = c.y;
+        opts->debug.srgb_out[2] = c.z;
+    }
+    
+    /*
     if (opts->extra.pixel == idx) {
         printf("\npixel: %.2f %.2f %.2f\n", c.x, c.y, c.z);
     }
+    */
     /*
     if (idx == 0) {
         printf("srgb result for gray: %.2f %.2f %.2f\n", c.x, c.y, c.z);
     }
     */
     out_img[out_idx] = c;
-    //img[idx] = (float4)(q, q, q, 0);
-}
-
-__kernel void process_photo_cont(
-    __global float4 * img,
-    __global struct PhotoProcessOpts * opts
-    )
-{
-    int idx = get_global_id(0);
-    float4 exposure = img[idx];
-    float4 xyz = (float4)(0, 0, 0, 0);
-    float q = exposure.w; // / 0.2f;
-
-    exposure *= (1.0f - 0.0f * exposure.w);
-
-    float4 density = exposure_to_density_paper(exposure, opts, 1.0f);
-    for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant2.v[i];
-        float rr = opts->paper.red.dye.v[i];
-        float gg = opts->paper.green.dye.v[i];
-        float bb = opts->paper.blue.dye.v[i];
-
-        //lt /= pow(10.0f, 1.0f * (rr * density.x + gg * density.y + bb * density.z));
-
-        float cr = opts->paper.red.couplers[0] * (
-                    density.x
-                 + (1-density.y) * opts->paper.red.couplers[1]
-                 + (1-density.z) * opts->paper.red.couplers[2]);
-        float cg = opts->paper.red.couplers[0] * (
-                   (1-density.x) * opts->paper.green.couplers[0]
-                 + density.y
-                 + (1-density.z) * opts->paper.green.couplers[2]);
-        float cb = opts->paper.red.couplers[0] * (
-                   (1-density.x) * opts->paper.blue.couplers[0]
-                 + (1-density.y) * opts->paper.blue.couplers[1]
-                 + density.z);
-        if (cr < 0) { cr = 0; }
-        if (cg < 0) { cg = 0; }
-        if (cb < 0) { cb = 0; }
-
-        float rrr = rr*cr;
-        float ggg = gg*cg;
-        float bbb = bb*cb;
-        lt /= pow(10.0f, rrr + ggg + bbb);
-
-        if (opts->extra.pixel == idx) {
-            printf("%f\n", lt);
-        }
-
-        xyz.x += lt * A1931_78[i][0];
-        xyz.y += lt * A1931_78[i][1];
-        xyz.z += lt * A1931_78[i][2];
-    }
-    /*
-    if(idx == 0 || idx == 500000) {
-        printf("exposure: (%f, %f, %f)\n", exposure.x, exposure.y, exposure.z);
-        printf("density: (%f, %f, %f)\n", density.x, density.y, density.z);
-        //printf("L = %f\n", L);
-    }
-    */
-    float4 c = xyz_to_srgb_scalar(xyz / 3000.0f * opts->extra.linear_amp);
-    if (opts->extra.pixel == idx) {
-        printf("\npixel: %.2f %.2f %.2f\n", c.x, c.y, c.z);
-    }
-    /*
-    if (idx == 0) {
-        printf("srgb result for gray: %.2f %.2f %.2f\n", c.x, c.y, c.z);
-    }
-    */
-    img[idx] = c;
     //img[idx] = (float4)(q, q, q, 0);
 }
 
@@ -1684,189 +1804,3 @@ __kernel void process_bw(
     img[idx] = c;
 }
 
-/*
-float8 density_to_exposure_paper(float4 density, struct PhotoProcessOpts * opts)
-{
-    float4 exposure = (float4)(0, 0, 0, 0);
-    float4 xyz = (float4)(0, 0, 0, 0);
-    for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant1.v[i];
-        float4 da = dye_absorbtion(i, density, opts);
-        lt /= pow(10.0f, da.x + da.y + da.z + da.w);
-
-        exposure.x += lt * opts->paper.red.sense.v[i] * opts->extra.psr;
-        exposure.y += lt * opts->paper.green.sense.v[i] * opts->extra.psg;
-        exposure.z += lt * opts->paper.blue.sense.v[i] * opts->extra.psb;
-        xyz.x += lt * A1931_78[i][0];
-        xyz.y += lt * A1931_78[i][1];
-        xyz.z += lt * A1931_78[i][2];
-    }
-
-    exposure = fix_exposure(exposure);
-
-    return (float8) (exposure, xyz);
-}
-
-__kernel void process_photo(
-    __global float4 * img,
-    __global float4 * img_dbg,
-    __global float4 * img_dbg2,
-    __global struct PhotoProcessOpts * opts
-    )
-{
-    int idx = get_global_id(0);
-    
-    // 1. Image XYZ -> Spectrum
-    // 2. Spectrum, <<Spectral sensitivity (film)>> -> Exposure
-    float4 px = img[idx];
-    float4 lrgb = xyz_to_linear_srgb_scalar(px);
-    float4 exposure = rgb_to_exposure_film(lrgb, opts);
-
-    img[idx] = log10(exposure) + (float)(opts->film.red.curve.bias, opts->film.green.curve.bias, opts->film.blue.curve.bias, 0) + opts->exposure_correction_film;
-    
-    // 3. Exposure, <<Characteristic curve (film)>>,
-    //      <<Exposure correction (film)>> -> Density (film)
-    float4 density = exposure_to_density_film(exposure, opts);
-
-    // 4. Density (film), <<Spectral duffuse dye density (film)>>,
-    //      <<Illuminant 1>> -> Duffused spectrum
-    // 5. Duffused spectrum, <<Spectral sensitivity (paper)>> -> Exposure
-    float4 _xyz;
-    float8 e = density_to_exposure_paper(density, opts);
-    exposure = e.s0123;
-    _xyz     = e.s4567;
-
-    img_dbg[idx] = log10(exposure) + (float)(opts->paper.red.curve.bias, opts->paper.green.curve.bias, opts->paper.blue.curve.bias, 0) + opts->exposure_correction_paper;
-    
-    if (opts->extra.stop == 1) {
-        float4 c = xyz_to_srgb_scalar(0.1f * _xyz);
-        img[idx] = c;
-        return;
-    }
-
-    // 6. Exposure, <<Characteristic curve (paper)>>,
-    //      <<Exposure correction (paper)>> -> Density (paper)
-    density.x = log_density(log10(exposure.x),
-                            opts->exposure_correction_paper,
-                            &opts->paper.red.curve);
-    density.y = log_density(log10(exposure.y),
-                            opts->exposure_correction_paper,
-                            &opts->paper.green.curve);
-    density.z = log_density(log10(exposure.z),
-                            opts->exposure_correction_paper,
-                            &opts->paper.blue.curve);
-
-    img_dbg2[idx] = density;
-}
-
-__kernel void process_photo2(
-    __global float4 * img_in,
-    __global float4 * img_out,
-    __global struct PhotoProcessOpts * opts,
-    float min_density
-    )
-{
-    int idx = get_global_id(0);
-    
-    float4 density = img_in[idx]; //(img_in[idx] - min_density) * 1.0f;
-
-    // 7. Density (paper), <<Spectral reflection dye density (paper)>>,
-    //      <<Illuminant 2>> -> Reflected spectrum
-    // 8. Reflected spectrum -> XYZ -> sRGB
-    float4 xyz = (float4)(0, 0, 0, 0);
-    float L = 0.0f;
-    float l = 0.0f;
-    for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant2.v[i];
-        L += lt * A1931_78[i][1];
-        lt /= pow(10.0f, opts->paper.red.dye.v[i]  /2 * density.x);
-        lt /= pow(10.0f, opts->paper.green.dye.v[i]/2 * density.y);
-        lt /= pow(10.0f, opts->paper.blue.dye.v[i] /2 * density.z);
-        l += lt;
-        xyz.x += lt * A1931_78[i][0];
-        xyz.y += lt * A1931_78[i][1];
-        xyz.z += lt * A1931_78[i][2];
-    }
-
-    float4 c = xyz_to_srgb_scalar(xyz / L * 100.0f); //(0.5f * xyz);
-    img_out[idx] = c; //1.0 - (log10(L/l) - 0.88f) / 2.5f;
-}
-
-__kernel void process_photo3(
-    __global float4 * img,
-    __global struct PhotoProcessOpts * opts
-    )
-{
-    int idx = get_global_id(0);
-
-    int es = opts->extra.stop;
-    
-    float4 px = img[idx];
-    float4 lrgb = xyz_to_linear_srgb_scalar(px);
-    float4 exposure = rgb_to_exposure(lrgb, opts);
-
-    float4 density = exposure_to_density(exposure, opts, 1.0f);
-    float4 xyz = (float4)(0, 0, 0, 0);
-    float L = 0.0f;
-    exposure = (float4)(0, 0, 0, 0);
-    for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant1.v[i];
-        float rr = opts->film.red.dye.v[i];
-        float gg = opts->film.green.dye.v[i];
-        float bb = opts->film.blue.dye.v[i];
-
-        // TODO: is it correct to calculate L pixel-wise?
-        L += lt * A1931_78[i][1];
-
-        if (es & 1) {
-            lt /= pow(10.0f, rr * density.x);
-        }
-        if (es & 2) {
-            lt /= pow(10.0f, gg * density.y);
-        }
-        if (es & 4) {
-            lt /= pow(10.0f, bb * density.z);
-        }
-        if (es & 8) {
-            lt /= pow(10.0f, gg * (0.35f - 0.134f * density.x));
-        }
-        if (es & 16) {
-            lt /= pow(10.0f, bb * (0.63f - 0.134f * density.x - 0.087f * density.y));
-        }
-        if (es & 32) {
-            lt /= pow(10.0f, opts->film.fog.v[i]);
-        }
-
-        exposure.x += lt * 1.7f * opts->paper.red.sense.v[i];
-        exposure.y += lt * opts->paper.green.sense.v[i];
-        exposure.z += lt * opts->paper.blue.sense.v[i];
-    }
-    density = exposure_to_density_paper(exposure, opts, 1.0f);
-    for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant2.v[i];
-        float rr = opts->paper.red.dye.v[i];
-        float gg = opts->paper.green.dye.v[i];
-        float bb = opts->paper.blue.dye.v[i];
-
-        lt /= pow(10.0f, rr * density.x);
-        lt /= pow(10.0f, gg * density.y);
-        lt /= pow(10.0f, bb * density.z);
-
-        xyz.x += lt * A1931_78[i][0];
-        xyz.y += lt * A1931_78[i][1];
-        xyz.z += lt * A1931_78[i][2];
-    }
-
-    if(idx == 0 || idx == 500000) {
-        printf("exposure: (%f, %f, %f)\n", exposure.x, exposure.y, exposure.z);
-        printf("density: (%f, %f, %f)\n", density.x, density.y, density.z);
-        printf("L = %f\n", L);
-    }
-    float4 c = xyz_to_srgb_scalar(xyz / 3000.0f * 100.0f);
-    if (es & 1024) {
-        img[idx] = c;
-    } else {
-        img[idx] = 1 - c;
-    }
-}
-*/

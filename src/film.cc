@@ -1,7 +1,7 @@
 #include "film.h"
 #include "cldriver.h"
 
-Image process_photo(const Image& img, const PhotoProcessOpts& opts)
+Image process_photo(const Image& img, PhotoProcessOpts& opts)
 {
     const auto& drv = CLDriver::get();
     size_t len = img.width * img.height;
@@ -16,12 +16,13 @@ Image process_photo(const Image& img, const PhotoProcessOpts& opts)
                             out_len * sizeof(Color));
     cl::Buffer opts_buf(drv.context(),
         const_cast<PhotoProcessOpts*>(&opts),
-        const_cast<PhotoProcessOpts*>(&opts + 1), true);
+        const_cast<PhotoProcessOpts*>(&opts + 1), false);
     cl::CommandQueue queue(drv.context());
     cl::KernelFunctor<cl::Buffer, cl::Buffer, cl::Buffer>
         kf(drv.program(), "process_photo");
     auto args = cl::EnqueueArgs(queue, cl::NDRange(out_width, out_height));
     kf(args, img_buf, opts_buf, out_img_buf);
     cl::copy(queue, out_img_buf, out_img.data, out_img.data + out_len);
+    cl::copy(queue, opts_buf, &opts, &opts + 1);
     return out_img;
 }

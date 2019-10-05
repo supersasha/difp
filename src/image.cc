@@ -163,3 +163,25 @@ Image sub_image(const Image& img, int left, int top, int width, int height)
     }
     return res;
 }
+
+Image gradient(int w, int h, const Color& from, const Color& to)
+{
+    Image res(w, h);
+    Color step(
+        (to.c[0] - from.c[0]) / (w - 1),
+        (to.c[1] - from.c[1]) / (w - 1),
+        (to.c[2] - from.c[2]) / (w - 1)
+    );
+    int base = 0;
+    for (int row = 0; row < h; row++) {
+        Color clr = from;
+        for (int col = 0; col < w; col++) {
+            res.data[base + col] = clr;
+            clr.c[0] += step.c[0];
+            clr.c[1] += step.c[1];
+            clr.c[2] += step.c[2];
+        }
+        base += w;
+    }
+    return res;
+}
