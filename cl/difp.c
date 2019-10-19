@@ -1236,13 +1236,13 @@ float4 exposure_to_density(
     )
 {
     float4 density = (float4) (
-        log_density(k * (log10(exposure.x)/* - opts->film.red.theta*//*0.75f*/),
+        log_density(k * (log10(exposure.x) /*+ opts->extra.psr*//* - opts->film.red.theta*//*0.75f*/),
             opts->exposure_correction_film + exp_corr,
             &opts->film.red.curve),
-        log_density(k * (log10(exposure.y)/* - opts->film.green.theta*//*0.58f*/),
+        log_density(k * (log10(exposure.y) /*+ opts->extra.psg*//* - opts->film.green.theta*//*0.58f*/),
             opts->exposure_correction_film + exp_corr,
             &opts->film.green.curve),
-        log_density(k * (log10(exposure.z)/* - opts->film.blue.theta*//*0.63f*/),
+        log_density(k * (log10(exposure.z) /*+ opts->extra.psb*//* - opts->film.blue.theta*//*0.63f*/),
             opts->exposure_correction_film + exp_corr,
             &opts->film.blue.curve),
         0
@@ -1257,13 +1257,13 @@ float4 exposure_to_density_paper(
     )
 {
     float4 density = (float4) (
-        log_density(k * log10(exposure.x),
+        log_density(k * (log10(exposure.x) - opts->extra.psr),
             opts->exposure_correction_paper,
             &opts->paper.red.curve),
-        log_density(k * log10(exposure.y),
+        log_density(k * (log10(exposure.y) - opts->extra.psg),
             opts->exposure_correction_paper,
             &opts->paper.green.curve),
-        log_density(k * log10(exposure.z),
+        log_density(k * (log10(exposure.z) - opts->extra.psb),
             opts->exposure_correction_paper,
             &opts->paper.blue.curve),
         0
@@ -1433,7 +1433,7 @@ __kernel void process_photo(
 
     float4 density = exposure_to_density(exposure, opts, 1.0f, 0);
 
-#define SUBLAYERS 1
+#define SUBLAYERS 0
 #if SUBLAYERS
     density.x *= exp(-0.25f * density.x);
     density.y *= exp(-0.25f * density.y);
@@ -1528,8 +1528,12 @@ __kernel void process_photo(
         opts->debug.film_tdensity[2] = cf.z; //bbb;
     }
     for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant1.v[i] *
-                   pow(10.0f, opts->extra.light_through_film);
+        float lt;
+        if (opts->extra.stop) {
+            lt = opts->illuminant2.v[i] * pow(10.0f, opts->extra.light_through_film);
+        } else {
+            lt = opts->illuminant1.v[i];
+        }
 
         if (opts->extra.pixel == idx) {
             opts->debug.film_fall_spectrum[i] = lt;
@@ -1553,10 +1557,22 @@ __kernel void process_photo(
            + CC_FILTER[2][i]*opts->extra.psb);
         */
         if (!opts->extra.stop) {
+            /*
             lt /= pow(10.0f,
+                    rr * opts->extra.psr +
+                    gg * opts->extra.psg +
+                    bb * opts->extra.psb);
+            */
+                    /*
                     ((i >= 0  && i < 26) ? 1.0f : 0.0f) * opts->extra.psb +
                     ((i >= 26 && i < 40) ? 1.0f : 0.0f) * opts->extra.psg +
                     ((i >= 40 && i < 65) ? 1.0f : 0.0f) * opts->extra.psr);
+                    */
+                    /*
+                   + CC_FILTER[0][i]*opts->extra.psr
+                   + CC_FILTER[1][i]*opts->extra.psg
+                   + CC_FILTER[2][i]*opts->extra.psb);
+                   */
             /*
             float r = lt / pow(10.0f, opts->extra.psr);
             float g = lt / pow(10.0f, opts->extra.psg);
@@ -1624,7 +1640,8 @@ __kernel void process_photo(
     }
 
     for(int i = 0; i < SPECTRUM_SIZE; i++) {
-        float lt = opts->illuminant2.v[i] *
+        float lt = //100.0f *
+                   opts->illuminant2.v[i] *
                    pow(10.0f, opts->extra.light_on_paper);
         if (opts->extra.pixel == idx) {
             opts->debug.paper_fall_spectrum[i] = lt;
@@ -1664,9 +1681,19 @@ __kernel void process_photo(
         //lt /= pow(10.0f, (cr*rr + cg*gg + cb*bb));
         lt /= pow(10, ((cp.x) * rr + (cp.y) * gg + (cp.z) * bb));
         lt *= pow(10.0f,
+                rr * opts->extra.paper_filter[0] +
+                gg * opts->extra.paper_filter[1] +
+                bb * opts->extra.paper_filter[2]);
+        /*
+                   + CC_FILTER[0][i]*opts->extra.paper_filter[0]
+                   + CC_FILTER[1][i]*opts->extra.paper_filter[1]
+                   + CC_FILTER[2][i]*opts->extra.paper_filter[2]);
+        */
+        /*
                 ((i >= 0  && i < 26) ? 1.0f : 0.0f) * opts->extra.paper_filter[2] +
                 ((i >= 26 && i < 40) ? 1.0f : 0.0f) * opts->extra.paper_filter[1] +
                 ((i >= 40 && i < 65) ? 1.0f : 0.0f) * opts->extra.paper_filter[0]);
+        */
     
         if (opts->extra.pixel == idx) {
             opts->debug.paper_refl_spectrum[i] = lt;

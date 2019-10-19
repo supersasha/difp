@@ -55,8 +55,10 @@ public:
     };
     Rgb32Image processImage(Image& image, const ProcessingOptions& po)
     {
-        std::string filmFile = "profiles/film/kodak-portra-400-new-v2.film";
-        std::string paperFile = "profiles/paper/kodak-endura-new-v3.paper";
+        //std::string filmFile = "profiles/film/kodak-portra-400-new-v5.film";
+        //std::string paperFile = "profiles/paper/kodak-endura-new-v5.paper";
+        std::string filmFile = "profiles/film/kodak-portra-400-experim-v2.film";
+        std::string paperFile = "profiles/paper/kodak-endura-experim.paper";
 
         PhotoProcessOpts opts;
         opts.exposure_correction_film = m_filmExposure;
@@ -84,13 +86,6 @@ public:
         opts.illuminant1 = jia;
         opts.illuminant2 = jid65;
 
-        /*
-        std::ifstream fextra("profiles/extra.phm");
-        json jextra;
-        fextra >> jextra;
-
-        opts.extra = jextra;
-        */
         opts.extra.psr = m_red;
         opts.extra.psg = m_green;
         opts.extra.psb = m_blue;
@@ -459,7 +454,7 @@ private:
     Image m_origImage;
     Image m_smallImage;
     float m_filmExposure = -1.85;
-    float m_paperExposure = -1.48; //-3.18;
+    float m_paperExposure = -3.10; //-1.48; //-3.18;
     float m_red = 0;
     float m_green = 0.270; //0.349; //0.57; //0.457; //0.438;
     float m_blue = 0.569; //0.614; //0.8; //0.744; //0.765;
@@ -486,7 +481,7 @@ private:
     float m_lightOnPaper = -1.14;
     Debug m_debug;
     Mode m_mode = MODE_IMAGE;
-    float m_paperFilter[3] = {0, 0.394, 0.310}; //{0, 0.361, 0.248}; //{0, 0.152, 0.056};
+    float m_paperFilter[3] = {0, 0.372, 0.530}; //{0, 0.524, 0.406}; //{0, 0.394, 0.310}; //{0, 0.361, 0.248}; //{0, 0.152, 0.056};
 };
 
 int main(int, char**)
