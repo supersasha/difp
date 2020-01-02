@@ -3,7 +3,7 @@
 #include "cldriver.h"
 #include "utils.h"
 
-CLDriver CLDriver::s_cldriver("cl/difp.c");
+CLDriver CLDriver::s_cldriver("cl/difp2.c");
 
 CLDriver::CLDriver(const std::string& filename)
 {

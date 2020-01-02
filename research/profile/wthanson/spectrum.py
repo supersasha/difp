@@ -1,4 +1,5 @@
 import math
+import json
 
 import numpy as np
 from numpy.linalg import inv
@@ -78,6 +79,18 @@ class Spectrum:
         self.bases = [SpectralBasis(self.light, b) for b in mdict['bases']]
         self._do_init()
 
+    def to_json(self):
+        obj = {
+            'wp': self.wp.tolist(), # 2
+            'sectors': self.sectors.tolist(), # 6x2
+            'light': self.light.tolist(), # 31
+            # 7x3x31
+            'bases': np.array([b.basis.transpose() for b in self.bases]).tolist(),
+            # 7x3x3 
+            'tri_to_v_mtx': np.array([b.tri_to_v_mtx for b in self.bases]).tolist()
+        }
+        return json.dumps(obj, indent=4)
+
     def extract_bases(self):
         d = load_spectra()
         t = reflectance_to_xyz(self.mtx, d.transpose()).transpose()
@@ -102,7 +115,7 @@ class Spectrum:
         xy = colors.chromaticity(xyz)
         s = self.find_sector(xy)
         refl = self.bases[s].reflectance_of(xyz)
-        refl = refl.clip(1.0e-5, 1)
+        refl = refl.clip(1.0e-15, 1)
         sp = refl * self.light
         return sp, refl
 

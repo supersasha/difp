@@ -22,6 +22,8 @@
 #include "cldriver.h"
 #include "color.h"
 
+#include "data.h"
+
 #include <json.hpp>
 using json = nlohmann::json;
 
@@ -53,7 +55,21 @@ public:
         MODE_IMAGE,
         MODE_GRADIENT
     };
+
     Rgb32Image processImage(Image& image, const ProcessingOptions& po)
+    {
+        auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
+        auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
+        auto opts = UserOptions();
+        opts.color_corr = Array<3> {m_red, m_green, m_blue};
+        opts.film_exposure = m_filmExposure;
+        auto processedImage = process_photo(image, sd, pd, opts);
+        Rgb32Image img = convert_image_to_rgb32(processedImage);
+        return img;
+        //tex.load(img);
+    }
+
+    Rgb32Image processImageOld(Image& image, const ProcessingOptions& po)
     {
         //std::string filmFile = "profiles/film/kodak-portra-400-new-v5.film";
         //std::string paperFile = "profiles/paper/kodak-endura-new-v5.paper";
@@ -104,7 +120,7 @@ public:
         opts.extra.paper_filter[1] = m_paperFilter[1];
         opts.extra.paper_filter[2] = m_paperFilter[2];
 
-        auto processedImage = process_photo(image, opts);
+        auto processedImage = process_photo_old(image, opts);
         m_debug = opts.debug;
         Rgb32Image img = convert_image_to_rgb32(processedImage);
         return img;
@@ -288,13 +304,13 @@ public:
             if (ImGui::SliderFloat("Light on paper", &m_lightOnPaper, -5, 5, "%.2f")) {
                 processSmallImage();
             }
-            if (ImGui::SliderFloat("Red", &m_red, 0, 2, "%.3f")) {
+            if (ImGui::SliderFloat("Red", &m_red, 0, 0.2, "%.3f")) {
                 processSmallImage();
             }
-            if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 2 /*0.8*/, "%.3f")) {
+            if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 0.2 /*0.8*/, "%.3f")) {
                 processSmallImage();
             }
-            if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 2 /*1.5*/, "%.3f")) {
+            if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 0.2 /*1.5*/, "%.3f")) {
                 processSmallImage();
             }
             if (ImGui::SliderFloat("Linear AMP", &m_linAmp, -2, 1, "%.2f")) {
