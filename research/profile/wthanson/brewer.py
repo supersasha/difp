@@ -75,7 +75,7 @@ def normalized_dyes(dyes, light, density=1.0, quantities=False):
         xyz = trans @ trans_to_xyz_mtx.transpose()
         xy = colors.chromaticity(xyz)
         return (d - density)**2 + np.sum((xy - wp)**2)
-    bounds = [(0.0, 3.0)] * 3
+    bounds = [(0.0, 7.0)] * 3
     r = opt.minimize(f, np.zeros(3), bounds=bounds)
     if quantities:
         return r.x

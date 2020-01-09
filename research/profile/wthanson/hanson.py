@@ -1,5 +1,6 @@
 import math
 import json
+import time
 
 import numpy as np
 import argparse
@@ -30,19 +31,21 @@ def zigzag_p(x, gamma, ymax):
     return y
 
 class Hanson:
-    def __init__(self, film, paper, paper_gammas=[5.0, 5.0, 5.0]):
+    def __init__(self, film, paper, max_density=1.0, paper_gammas=1.0):#/1.2793):
         self.film = film
         self.paper = paper
-        self.paper_gammas = np.array(paper_gammas)
+        self.paper_gammas = np.array([paper_gammas] * 3)
+        #self.paper_gammas = np.array([1/1.2793, 1.9809, 1.0])
         self.dev_light = utils.to_400_700_10nm(illum.D55)
         self.proj_light = utils.to_400_700_10nm(illum.D55)
         self.refl_light = utils.to_400_700_10nm(illum.D65)
-        self.max_density = 1.0 #math.log10(256.0)
+        self.max_density = max_density #math.log10(256.0)
 
         self.film_sense = brewer.normalized_sense(film.sense(), self.dev_light)
         self.film_dyes = brewer.normalized_dyes(film.dye(), self.proj_light)
         self.film_max_qs = brewer.normalized_dyes(self.film_dyes, self.proj_light,
                             density=self.max_density, quantities=True)
+        #print('Max qs:', self.film_max_qs)
         self.paper_dyes = brewer.normalized_dyes(paper.dye(), self.refl_light)
         # paper_sense calculated later
 
@@ -53,107 +56,158 @@ class Hanson:
         self.refl_gen.loadmat('d55-bases.mat')
         #with open('d55-bases.json', 'w') as f:
         #    print(self.refl_gen.tojson(), file=f)
-
-
-    def compute_couplers(self):
         self.brwr = brewer.brewer(self.film_sense, self.paper_dyes,
                                 dev_light=self.dev_light, proj_light=self.proj_light)
+
+    def compute_couplers(self):
+        t0 = time.time()
         self.neg_gammas = self.brwr.Gammas.transpose().dot(np.diag(1/self.paper_gammas))
-        #print('Gammas:\n', self.brwr.Gammas)
-        #print('Negative gammas:\n', self.neg_gammas)
         dyes = np.diag(self.film_max_qs) @ self.film_dyes
-
-        #trans = brewer.transmittance(dyes, np.array([0, 0, 1]))
-        #xyz1 = spectrum.transmittance_to_xyz(self.mtx_proj, trans)
-        #print(f'Dyes xyz: {xyz1}, srgb: {colors.xyz_to_srgb(xyz1)} [{self.film_max_qs}]')
-        #plt.plot(dyes.transpose())
-        #plt.show()
-
-        ref_waves = np.argmax(dyes, axis=1)
-        #print('Ref waves: ', ref_waves, ref_waves*5+400)
-
+        self.ref_waves = np.argmax(dyes, axis=1)
         intrp = PchipInterpolator
         xs = np.arange(31)
-        
         couplers = []
         for idx in range(3):
-            k = dyes[idx, ref_waves[idx]] / self.neg_gammas[idx, idx]
-            dye = dyes[idx] / k
-     
+            dye = dyes[idx]
             idx1, idx2 = brewer.complementary_indices(idx)
-            
             coupler_at = [0, 0, 0]
-            coupler_at[idx1] = k * (dye[ref_waves[idx1]] - self.neg_gammas[idx, idx1])
-            coupler_at[idx2] = k * (dye[ref_waves[idx2]] - self.neg_gammas[idx, idx2])
+            coupler_at[idx1] = dye[self.ref_waves[idx1]] - self.neg_gammas[idx, idx1] / self.neg_gammas[idx, idx] * dye[self.ref_waves[idx]]
+            coupler_at[idx2] = dye[self.ref_waves[idx2]] - self.neg_gammas[idx, idx2] / self.neg_gammas[idx, idx] * dye[self.ref_waves[idx]]
             
             spl = intrp(
-                [-5, ref_waves[2], ref_waves[1], ref_waves[0], 36],
+                [-5, self.ref_waves[2], self.ref_waves[1], self.ref_waves[0], 36],
                 [0, coupler_at[2], coupler_at[1], coupler_at[0], 0]
             )
             couplers.append(spl(xs))
         self.couplers = np.vstack(couplers)
-        
-        #plt.plot(self.couplers[0], 'r')
-        #plt.plot(self.couplers[1], 'g')
-        #plt.plot(self.couplers[2], 'b')
-        #plt.plot(dyes[0], 'c')
-        #plt.plot(dyes[1], 'm')
-        #plt.plot(dyes[2], 'y')
-        #plt.show()
-        
         self.neg_white = brewer.transmittance(dyes, np.ones(3)) * self.proj_light
-        self.paper_sense = brewer.normalized_sense(paper.sense(), self.neg_white)
-        self.paper_sense[0] -= 0.009
-        self.paper_sense[1] += 0.003
-        self.paper_sense[2] += 0.003
-        #return self.couplers
+        self.paper_sense = brewer.normalized_sense(self.paper.sense(), self.neg_white)
+        print('Time:', time.time() - t0)
 
-    def develop(self, xyz):
+    def develop_film(self, H):
+        dyes = np.diag(self.film_max_qs) @ self.film_dyes
+        r = dyes[0, self.ref_waves[0]]
+        g = dyes[1, self.ref_waves[1]]
+        b = dyes[2, self.ref_waves[2]]
+        #print('r,g,b:', [r, g, b])
+        dev = np.array([
+                zigzag(H[0], self.neg_gammas[0, 0], r),#self.film_max_qs[0]),
+                zigzag(H[1], self.neg_gammas[1, 1], g),#self.film_max_qs[1]),
+                zigzag(H[2], self.neg_gammas[2, 2], b),#self.film_max_qs[2]),
+            ])
+        dyes1 = np.diag([1/r, 1/g, 1/b]) @ dyes
+        developed_dyes = np.diag(dev) @ dyes1
+        developed_couplers = np.diag([
+                1 - dev[0] / r, #self.film_max_qs[0],
+                1 - dev[1] / g, #self.film_max_qs[1],
+                1 - dev[2] / b, #self.film_max_qs[2],
+            ]) @ self.couplers
+        developed = developed_dyes + developed_couplers
+        return developed
+
+    def develop_paper(self, H):
+        negative = self.develop_film(H)
+        #plt.plot(negative.transpose())
+        trans = brewer.transmittance(negative, np.ones(3)) * self.proj_light
+        H1 = np.log10((10.0**self.paper_sense) @ trans) * self.paper_gammas #+ self.brwr.Ks
+        print('H1:', H1)
+        developed = np.diag(H1) @ self.paper_dyes
+        return developed
+
+    def H_neg(self):
+        hsr = []
+        hsg = []
+        hsb = []
+        xs = np.linspace(-2.0, 1.0, 100)
+        for h in xs:
+            negative = self.develop_film(np.array([0., h, 0.]))
+            trans = brewer.transmittance(negative, np.ones(3)) * self.proj_light
+            h1 = np.log10((10.0**self.paper_sense) @ trans)
+            hsr.append(h1[0])
+            hsg.append(h1[1])
+            hsb.append(h1[2])
+        plt.plot(xs, hsr, 'r')
+        plt.plot(xs, hsg, 'g')
+        plt.plot(xs, hsb, 'b')
+        plt.show()
+
+    def H_neg_of_H(self, H):
+        t0 = time.time()
+        negative = self.develop_film(H)
+        trans = brewer.transmittance(negative, np.ones(3)) * self.proj_light
+        res = np.log10((10.0**self.paper_sense) @ trans)
+        print('Time H_neg_of_H:', time.time() - t0)
+        return res
+
+    def test_one(self, idx):
+        d1 = np.array([0., 0., 0.])
+        d1[idx] = -1.0
+        developed1 = self.develop_paper(d1)
+        developed0 = self.develop_paper(np.array([0., 0., 0.]))
+        colors = ['r', 'g', 'b']
+        g = developed0[idx, self.ref_waves] - developed1[idx, self.ref_waves]
+        print(f'G:[{idx}]', -g)
+        plt.plot(developed1[idx], colors[idx] + '--')
+        plt.plot(developed0[idx], colors[idx])
+
+    def test(self):
+        for i in range(3):
+            self.test_one(i)
+        print('Neg gammas:')
+        print(self.neg_gammas)
+        print('Gammas:')
+        print(self.brwr.Gammas)
+        plt.show()
+
+    def develop(self, xyz, debug=False):
         sp, refl = self.refl_gen.spectrum_of(xyz)
         H = np.log10(brewer.exposure(self.film_sense, sp))
 
-        #zs = []
-        #xs = np.linspace(-20.0, 5.0, 100)
-        #for x in xs:
-        #    zs.append(zigzag(x, self.neg_gammas[0, 0], self.film_max_qs[0]))
-        #plt.plot(xs, zs)
-        #plt.show()
+        #if debug:
+        #    zs = []
+        #    xs = np.linspace(-20.0, 5.0, 100)
+        #    for x in xs:
+        #        zs.append(zigzag(x, self.neg_gammas[0, 0], self.film_max_qs[0]))
+        #    plt.plot(xs, zs)
+        #    plt.show()
 
+        #dev = np.array([
+        #        zigzag(H[0], self.neg_gammas[0, 0], self.film_max_qs[0]),
+        #        zigzag(H[1], self.neg_gammas[1, 1], self.film_max_qs[1]),
+        #        zigzag(H[2], self.neg_gammas[2, 2], self.film_max_qs[2]),
+        #    ])
 
-        dev = np.array([
-                zigzag(H[0], self.neg_gammas[0, 0], self.film_max_qs[0]),
-                zigzag(H[1], self.neg_gammas[1, 1], self.film_max_qs[1]),
-                zigzag(H[2], self.neg_gammas[2, 2], self.film_max_qs[2]),
-            ])
-        #print('H:', H, 'dev:', dev)
-        developed_dyes = np.diag(dev) @ self.film_dyes
-        developed_couplers = np.diag([
-                1 - dev[0] / self.film_max_qs[0],
-                1 - dev[1] / self.film_max_qs[1],
-                1 - dev[2] / self.film_max_qs[2],
-            ]) @ self.couplers
-        developed = developed_dyes + developed_couplers
+        #if debug:
+        #    print('H:', H, 'dev:', dev)
+
+        #developed_dyes = np.diag(dev) @ self.film_dyes
+        #developed_couplers = np.diag([
+        #        1 - dev[0] / self.film_max_qs[0],
+        #        1 - dev[1] / self.film_max_qs[1],
+        #        1 - dev[2] / self.film_max_qs[2],
+        #    ]) @ self.couplers
+        #developed = developed_dyes + developed_couplers
+
+        developed = self.develop_film(H)
 
         trans = brewer.transmittance(developed, np.ones(3)) * self.proj_light
-        #plt.plot(trans.transpose())
-        H = np.log10((10.0**self.paper_sense) @ trans) * self.paper_gammas
-        #print('H1:', H)
-        developed = np.diag(H) @ self.paper_dyes
-        #developed = np.diag([
-        #        zigzag(D[0], self.paper_gammas[0], 1)   #+self.brwr.Ks[0],
-        #        zigzag(D[1], self.paper_gammas[1], 1)   #+self.brwr.Ks[1],
-        #        zigzag(D[2], self.paper_gammas[2], 1)   #+self.brwr.Ks[2],
-        #    ]) @ self.paper_dyes
+        #if debug:
+        #    plt.plot(trans.transpose())
+        #    plt.show()
+        H1 = np.log10((10.0**self.paper_sense) @ trans) * self.paper_gammas #+ self.brwr.Ks
+        if debug:
+            print('H1:', H1)
+        developed = np.diag(H1) @ self.paper_dyes
         
-        #plt.ylim(-0.1, 1.5)
+        #plt.ylim(-0.1, 6)
         #plt.plot(developed_dyes[0], 'c--')
         #plt.plot(developed_couplers[0], 'r')
         #plt.plot(developed[0], 'c')
-        
+        #
         #plt.plot(developed_dyes[1], 'm--')
         #plt.plot(developed_couplers[1], 'g')
         #plt.plot(developed[1], 'm')
-        
+        #
         #plt.plot(developed_dyes[2], 'y--')
         #plt.plot(developed_couplers[2], 'b')
         #plt.plot(developed[2], 'y')
@@ -199,23 +253,66 @@ def arguments():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest='command')
 
-    parser_test = subparsers.add_parser('test')
-    parser_test.add_argument('film_datasheet')
-    parser_test.add_argument('paper_datasheet')
+    def add_common_opts(subparser):
+        subparser.add_argument('-f', '--film', help='Film datasheet',
+            default='../../../profiles/datasheets/kodak-vision-250d-5207.datasheet')
+        subparser.add_argument('-p', '--paper', help='Paper datasheet',
+            default='../../../profiles/datasheets/kodak-endura.datasheet')
+
+    parser_mkprof = subparsers.add_parser('mkprof')
+    add_common_opts(parser_mkprof)
+
+    parser_debug = subparsers.add_parser('debug')
+    add_common_opts(parser_debug)
+
+    parser_demo = subparsers.add_parser('demo')
+    add_common_opts(parser_demo)
+    parser_demo.add_argument('image_path')
     
     return parser.parse_args()
 
-if __name__ == '__main__':
-    opts = arguments()
-    film = FilmProfile(opts.film_datasheet, mode31=True)
-    paper = FilmProfile(opts.paper_datasheet, mode31=True)
+def cmd_mkprof(opts):
+    film = FilmProfile(opts.film, mode31=True)
+    paper = FilmProfile(opts.paper, mode31=True)
     hanson = Hanson(film, paper)
     hanson.compute_couplers()
-    ##for x in np.linspace(0, 1, 10):
-    ##    print(hanson.develop(colors.srgb_to_xyz(colors.color(x, x, x))))
-    ##plt.plot(hanson.paper_dyes.transpose(), 'k')
-    ##plt.plot(hanson.film_dyes.transpose(), 'k--')
-    #plt.show()
-    hanson.develop_img_srgb('pics/medium21.jpg')
-    #print(hanson.to_json())
+    print(hanson.to_json())
     #print(hanson.refl_gen.to_json())
+
+def cmd_demo(opts):
+    film = FilmProfile(opts.film, mode31=True)
+    paper = FilmProfile(opts.paper, mode31=True)
+    hanson = Hanson(film, paper, max_density=1.0, paper_gammas=2.0)
+    hanson.compute_couplers()
+    hanson.develop_img_srgb(opts.image_path)
+
+def cmd_debug(opts):
+    film = FilmProfile(opts.film, mode31=True)
+    paper = FilmProfile(opts.paper, mode31=True)
+    hanson = Hanson(film, paper, max_density=1.0, paper_gammas=2.0)
+    hanson.compute_couplers()
+    #hanson.test()
+    H = np.array([-1.0, 0.0, 0.0])
+    #print(f'H_neg({H}) = ', hanson.H_neg_of_H(H))
+    hanson.H_neg()
+    print('Gammas:')
+    print(hanson.brwr.Gammas)
+    print('Neg gammas:')
+    print(hanson.neg_gammas)
+
+    #for x in np.linspace(0, 1, 10):
+    #    srgb = colors.color(x, x, x)
+    #    xyz = colors.srgb_to_xyz(srgb)
+    #    xyz1 = hanson.develop(xyz, debug=True)
+    #    srgb1 = colors.xyz_to_srgb(xyz1)
+    #    print(srgb1)
+    #plt.show()
+
+if __name__ == '__main__':
+    opts = arguments()
+    if opts.command == 'mkprof':
+        cmd_mkprof(opts)
+    elif opts.command == 'debug':
+        cmd_debug(opts)
+    elif opts.command == 'demo':
+        cmd_demo(opts)

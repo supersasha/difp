@@ -59,7 +59,7 @@ public:
     Rgb32Image processImage(Image& image, const ProcessingOptions& po)
     {
         auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
-        auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
+        auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207-2.json");
         auto opts = UserOptions();
         opts.color_corr = Array<3> {m_red, m_green, m_blue};
         opts.film_exposure = m_filmExposure;
