@@ -59,10 +59,12 @@ public:
     Rgb32Image processImage(Image& image, const ProcessingOptions& po)
     {
         auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
-        auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207-2.json");
+        auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
         auto opts = UserOptions();
         opts.color_corr = Array<3> {m_red, m_green, m_blue};
         opts.film_exposure = m_filmExposure;
+        opts.paper_exposure = m_paperExposure;
+        opts.paper_contrast = m_paperContrast;
         auto processedImage = process_photo(image, sd, pd, opts);
         Rgb32Image img = convert_image_to_rgb32(processedImage);
         return img;
@@ -292,18 +294,22 @@ public:
             if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -5, 5, "%.2f")) {
                 processSmallImage();
             }
+            /*
             if (ImGui::SliderFloat("Light through film", &m_lightThroughFilm, -5, 5, "%.2f")) {
                 processSmallImage();
             }
             if (ImGui::Checkbox("Film only", &m_filmOnly)) {
                 processSmallImage();
             }
+            */
             if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -5, 5, "%.2f")) {
                 processSmallImage();
             }
+            /*
             if (ImGui::SliderFloat("Light on paper", &m_lightOnPaper, -5, 5, "%.2f")) {
                 processSmallImage();
             }
+            */
             if (ImGui::SliderFloat("Red", &m_red, 0, 0.2, "%.3f")) {
                 processSmallImage();
             }
@@ -313,6 +319,7 @@ public:
             if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 0.2 /*1.5*/, "%.3f")) {
                 processSmallImage();
             }
+            /*
             if (ImGui::SliderFloat("Linear AMP", &m_linAmp, -2, 1, "%.2f")) {
                 processSmallImage();
             }
@@ -325,6 +332,7 @@ public:
             if (ImGui::SliderFloat("P. Blue", m_paperFilter + 2, 0, 2, "%.3f")) {
                 processSmallImage();
             }
+            */
             /*
             if (ImGui::SliderFloat("2nd sub-layer delta", &m_layer2d, 0, 3, "%.2f")) {
                 processSmallImage();
@@ -351,10 +359,10 @@ public:
             if (ImGui::SliderFloat("Film contrast", &m_filmContrast, 0.1, 2, "%.2f")) {
                 processSmallImage();
             }
+            */
             if (ImGui::SliderFloat("Paper contrast", &m_paperContrast, 0.1, 2, "%.2f")) {
                 processSmallImage();
             }
-            */
             if (ImGui::RadioButton("Image", m_mode == MODE_IMAGE)) {
                 m_mode = MODE_IMAGE;
                 processSmallImage();
@@ -469,11 +477,11 @@ private:
 
     Image m_origImage;
     Image m_smallImage;
-    float m_filmExposure = -1.85;
-    float m_paperExposure = -3.10; //-1.48; //-3.18;
+    float m_filmExposure = 0.0;
+    float m_paperExposure = 0.0; //-1.48; //-3.18;
     float m_red = 0;
-    float m_green = 0.270; //0.349; //0.57; //0.457; //0.438;
-    float m_blue = 0.569; //0.614; //0.8; //0.744; //0.765;
+    float m_green = 0.0; //0.270; //0.349; //0.57; //0.457; //0.438;
+    float m_blue = 0.0; //0.569; //0.614; //0.8; //0.744; //0.765;
 
     bool m_inProcessingImage = false;
     bool m_scheduleProcessImage = false;
@@ -490,7 +498,7 @@ private:
     int m_paperFormatIdx = 10;
     float m_frameWidthRatio = 0;
     ImVec2 m_sizeWithFrame = ImVec2(SMALL_WIDTH, SMALL_HEIGHT);
-    char m_saveSuffix[16] = "-15x20-f10";
+    char m_saveSuffix[16] = "brute-good";
     float m_filmContrast = 1.0;
     float m_paperContrast = 1.0;
     float m_lightThroughFilm = -1.62;

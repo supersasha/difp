@@ -86,6 +86,8 @@ struct UserOptions
 {
     float color_corr[3];
     float film_exposure;
+    float paper_exposure;
+    float paper_contrast;
 };
 
 /*
@@ -122,8 +124,21 @@ int find_sector(float2 xy0, struct SpectrumData * sd)
     return NUM_SECTORS - 1;
 }
 
+float sigma(float x, float _min, float _max, float gamma, float bias, float smoo)
+{
+    /* 
+     * When bias = 0 it reaches maximum at x = 0 (when not smoothed)
+     */
+    //float smoo = 0.2f;
+    float a = (_max - _min) / 2.0f;
+    float y = gamma * (x + 0.5f/gamma + bias) / a;
+    float w = y / pow(1.0f + pow(fabs(y), 1.0f/smoo), smoo);
+    return a * (w + 1.0f);
+}
+
 float zigzag(float x, float gamma, float ymax)
 {
+    /*
     if (x >= 0) {
         return ymax;
     }
@@ -132,6 +147,8 @@ float zigzag(float x, float gamma, float ymax)
         return 0;
     }
     return gamma * (x - x0);
+    */
+    return sigma(x, 0, ymax, gamma, 0, 0.2);
 }
 
 /*
@@ -195,15 +212,9 @@ __kernel void process_photo(
     }
     float4 H = log10(exposure) + opts->film_exposure;
     float4 dev = (float4) (
-        zigzag(H.x, pd->neg_gammas[0], pd->film_max_qs[0]),
-        zigzag(H.y, pd->neg_gammas[1], pd->film_max_qs[1]),
-        zigzag(H.z, pd->neg_gammas[2], pd->film_max_qs[2]),
-        0
-    );
-    float4 cdev = (float4) (
-        1 - dev.x/pd->film_max_qs[0],
-        1 - dev.y/pd->film_max_qs[1],
-        1 - dev.z/pd->film_max_qs[2],
+        zigzag(H.x, pd->neg_gammas[0], 1.0f),
+        zigzag(H.y, pd->neg_gammas[1], 1.0f),
+        zigzag(H.z, pd->neg_gammas[2], 1.0f),
         0
     );
 
@@ -213,9 +224,9 @@ __kernel void process_photo(
         float developed_dyes = pd->film_dyes[0][i] * dev.x
                              + pd->film_dyes[1][i] * dev.y
                              + pd->film_dyes[2][i] * dev.z;
-        float developed_couplers = pd->couplers[0][i] * cdev.x
-                                 + pd->couplers[1][i] * cdev.y
-                                 + pd->couplers[2][i] * cdev.z;
+        float developed_couplers = pd->couplers[0][i] * (1.0f - dev.x)
+                                 + pd->couplers[1][i] * (1.0f - dev.y)
+                                 + pd->couplers[2][i] * (1.0f - dev.z);
         float developed = developed_dyes + developed_couplers;
         float sp = pow(10, -developed) * pd->proj_light[i];
         exposure.x += pow(10, pd->paper_sense[0][i] - opts->color_corr[0]) * sp;
@@ -223,14 +234,23 @@ __kernel void process_photo(
         exposure.z += pow(10, pd->paper_sense[2][i] - opts->color_corr[2]) * sp;
     }
     
-    H = log10(exposure);
+    H = log10(exposure) + opts->paper_exposure;
 
     // Viewing paper
     float4 xyz1 = 0;
     for (int i = 0; i < SPECTRUM_SIZE; i++) {
-        float developed = pd->paper_dyes[0][i] * H.x * pd->paper_gammas[0]
-                        + pd->paper_dyes[1][i] * H.y * pd->paper_gammas[1]
-                        + pd->paper_dyes[2][i] * H.z * pd->paper_gammas[2];
+        //sigma(float x, float _min, float _max, float gamma, float bias, float smoo)
+        /*
+        float r = H.x * pd->paper_gammas[0];
+        float g = H.y * pd->paper_gammas[1];
+        float b = H.z * pd->paper_gammas[2];
+        */
+        float r = sigma(H.x, 0, 3, opts->paper_contrast * pd->paper_gammas[0], -0.5, 0.2);
+        float g = sigma(H.y, 0, 3, opts->paper_contrast * pd->paper_gammas[1], -0.5, 0.2);
+        float b = sigma(H.z, 0, 3, opts->paper_contrast * pd->paper_gammas[2], -0.5, 0.2);
+        float developed = pd->paper_dyes[0][i] * r
+                        + pd->paper_dyes[1][i] * g
+                        + pd->paper_dyes[2][i] * b;
         float trans = pow(10, -developed);
         xyz1.x += pd->mtx_refl[0][i] * trans;
         xyz1.y += pd->mtx_refl[1][i] * trans;

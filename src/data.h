@@ -42,4 +42,6 @@ struct UserOptions
 {
     Array<3> color_corr;
     float film_exposure;
+    float paper_exposure;
+    float paper_contrast;
 };
