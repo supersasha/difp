@@ -154,6 +154,7 @@ class Hanson:
             colors.color(95.05, 100.0, 108.9) / 16,
             colors.color(95.05, 100.0, 108.9) / 32,
             colors.color(95.05, 100.0, 108.9) / 64,
+            #colors.color(45, 27, 10),
 
             #colors.color(11.0, 20.0, 6.0),
             #colors.color(13.0, 9.0, 53.0),
@@ -164,7 +165,8 @@ class Hanson:
             d = 0
             for xyz in xyzs:
                 xyz1 = self.develop(xyz, x)
-                d += colors.delta_E76_xyz(xyz, xyz1)
+                d0 = colors.delta_E76_xyz(xyz, xyz1)
+                d += d0*d0
             return d
 
         bounds = [(0.0001, 2.0)] * 9

@@ -44,4 +44,7 @@ struct UserOptions
     float film_exposure;
     float paper_exposure;
     float paper_contrast;
+    float curve_smoo;
+    int frame_horz;
+    int frame_vert;
 };

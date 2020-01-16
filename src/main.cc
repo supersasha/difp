@@ -58,13 +58,18 @@ public:
 
     Rgb32Image processImage(Image& image, const ProcessingOptions& po)
     {
+        //std::cout << "(" << image.width << ", " << image.height << ")\n";
         auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
-        auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
+        //auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
+        auto pd = load_profile_data("research/profile/wthanson/kodak-portra-400-portra-400.json");
         auto opts = UserOptions();
         opts.color_corr = Array<3> {m_red, m_green, m_blue};
         opts.film_exposure = m_filmExposure;
         opts.paper_exposure = m_paperExposure;
         opts.paper_contrast = m_paperContrast;
+        opts.curve_smoo = m_curveSmoo;
+        opts.frame_horz = po.frame_horz;
+        opts.frame_vert = po.frame_vert;
         auto processedImage = process_photo(image, sd, pd, opts);
         Rgb32Image img = convert_image_to_rgb32(processedImage);
         return img;
@@ -363,6 +368,10 @@ public:
             if (ImGui::SliderFloat("Paper contrast", &m_paperContrast, 0.1, 2, "%.2f")) {
                 processSmallImage();
             }
+            if (ImGui::SliderFloat("Curve smoothness", &m_curveSmoo, 0.01, 1.0, "%.2f")) {
+                processSmallImage();
+            }
+            /*
             if (ImGui::RadioButton("Image", m_mode == MODE_IMAGE)) {
                 m_mode = MODE_IMAGE;
                 processSmallImage();
@@ -372,6 +381,7 @@ public:
                 m_mode = MODE_GRADIENT;
                 processSmallImage();
             }
+            */
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Debug")) {
@@ -498,9 +508,10 @@ private:
     int m_paperFormatIdx = 10;
     float m_frameWidthRatio = 0;
     ImVec2 m_sizeWithFrame = ImVec2(SMALL_WIDTH, SMALL_HEIGHT);
-    char m_saveSuffix[16] = "brute-good";
+    char m_saveSuffix[16] = "-brute-good";
     float m_filmContrast = 1.0;
     float m_paperContrast = 1.0;
+    float m_curveSmoo = 0.2;
     float m_lightThroughFilm = -1.62;
     float m_lightOnPaper = -1.14;
     Debug m_debug;

@@ -155,7 +155,7 @@ if __name__ == '__main__':
     s.extract_bases()
     mtx = reflectance_to_xyz_mtx(s.light)
     while True:
-        srgb = colors.color(random.random(), random.random(), random.random())
+        srgb = colors.color(random.random()*0.1+0.9, random.random()*0.1, random.random()*0.1)
         xyz = colors.srgb_to_xyz(srgb)
         sp, refl = s.spectrum_of(xyz)
         xyz1 = reflectance_to_xyz(mtx, refl)

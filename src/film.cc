@@ -31,8 +31,8 @@ Image process_photo(const Image& img, SpectrumData& sd, ProfileData& pd, UserOpt
 {
     const auto& drv = CLDriver::get();
     size_t len = img.width * img.height;
-    int out_width = img.width + 2 * 0; //opts.extra.frame_horz;
-    int out_height = img.height + 2 * 0; //opts.extra.frame_vert;
+    int out_width = img.width + 2 * opts.frame_horz;
+    int out_height = img.height + 2 * opts.frame_vert;
     size_t out_len = out_width * out_height;
     Image out_img(out_width, out_height);
 
