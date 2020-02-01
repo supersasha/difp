@@ -94,6 +94,7 @@ void FileInfo::obtainEntries()
             return e1.name < e2.name;
         }
     );
+    closedir(dir);
 }
 
 void FileInfo::setDir(const std::string& dir)

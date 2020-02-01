@@ -29,6 +29,7 @@ struct ProfileData
 
     Array2D<3, 31> couplers;
     Array<31> proj_light;
+    Array<31> dev_light;
     Array2D<3, 31> mtx_refl;
 
     Array<3> neg_gammas;
@@ -38,6 +39,14 @@ struct ProfileData
 
 ProfileData load_profile_data(const std::string& filename);
 
+enum ProcessingMode
+{
+    NORMAL = 0,
+    NEGATIVE,
+    IDENTITY,
+    FILM_EXPOSURE 
+};
+
 struct UserOptions
 {
     Array<3> color_corr;
@@ -45,6 +54,9 @@ struct UserOptions
     float paper_exposure;
     float paper_contrast;
     float curve_smoo;
+    //int negative;
+    int mode;
+    int channel;
     int frame_horz;
     int frame_vert;
 };

@@ -20,6 +20,7 @@ void from_json(const json& j, ProfileData& pd) {
 
     j.at("couplers").get_to(pd.couplers);
     j.at("proj_light").get_to(pd.proj_light);
+    j.at("dev_light").get_to(pd.dev_light);
     j.at("mtx_refl").get_to(pd.mtx_refl);
 
     j.at("neg_gammas").get_to(pd.neg_gammas);

@@ -75,11 +75,20 @@ struct ProfileData
 
     float couplers[3][31];
     float proj_light[31];
+    float dev_light[31];
     float mtx_refl[3][31];
 
     float neg_gammas[3];
     float paper_gammas[3];
     float film_max_qs[3];
+};
+
+enum ProcessingMode
+{
+    NORMAL = 0,
+    NEGATIVE,
+    IDENTITY,
+    FILM_EXPOSURE 
 };
 
 struct UserOptions
@@ -89,6 +98,9 @@ struct UserOptions
     float paper_exposure;
     float paper_contrast;
     float curve_smoo;
+    //int negative;
+    int mode;
+    int channel;
     int frame_horz;
     int frame_vert;
 };
@@ -132,7 +144,6 @@ float sigma(float x, float _min, float _max, float gamma, float bias, float smoo
     /* 
      * When bias = 0 it reaches maximum at x = 0 (when not smoothed)
      */
-    //float smoo = 0.2f;
     float a = (_max - _min) / 2.0f;
     float y = gamma * (x + 0.5f/gamma + bias) / a;
     float w = y / pow(1.0f + pow(fabs(y), 1.0f/smoo), smoo);
@@ -185,9 +196,19 @@ __kernel void process_photo(
     int idx = (out_row - fr_vert) * (width - 2 * fr_horz) + (out_col - fr_horz); 
     float4 xyz = img[idx] * 100;
 
+    if (opts->mode == IDENTITY) {
+        out_img[out_idx] = xyz_to_srgb_scalar(xyz * pow(10, opts->film_exposure));
+        return;
+    }
+
     // Spectrum
     float2 xy = chromaticity(xyz);
     int sector = find_sector(xy, sd);
+    if (opts->mode == FILM_EXPOSURE) {
+        out_img[out_idx] = (float4)(sector & 1, (sector & 2) >> 1, (sector & 4) >> 2, 0.0f);
+        return;
+    }
+
     //float basis[3][31] = sd->bases[sector];
     //float t[3][3] = sd->tri_to_v_mtx[sector];
 #define B(i, j) (sd->bases[sector][i][j])
@@ -208,11 +229,17 @@ __kernel void process_photo(
         } else if (refl > 1) {
             refl = 1;
         }
-        float sp = refl * sd->light[i];
+        float sp = refl * pd->dev_light[i]; //sd->light[i];
         exposure.x += pow(10, pd->film_sense[0][i] - opts->color_corr[0]) * sp;
         exposure.y += pow(10, pd->film_sense[1][i] - opts->color_corr[1]) * sp;
         exposure.z += pow(10, pd->film_sense[2][i] - opts->color_corr[2]) * sp;
     }
+
+    if (opts->mode == FILM_EXPOSURE) {
+        out_img[out_idx] = exposure * pow(10, opts->film_exposure);
+        return;
+    }
+
     float4 H = log10(exposure) + opts->film_exposure;
     float4 dev = (float4) (
         sigma(H.x, 0, 1.0f, pd->neg_gammas[0], 0, opts->curve_smoo),
@@ -220,6 +247,8 @@ __kernel void process_photo(
         sigma(H.z, 0, 1.0f, pd->neg_gammas[2], 0, opts->curve_smoo),
         0
     );
+
+    float4 xyz1 = 0;
 
     // Paper development
     exposure = (float4)(0, 0, 0, 1);
@@ -231,35 +260,43 @@ __kernel void process_photo(
                                  + pd->couplers[1][i] * (1.0f - dev.y)
                                  + pd->couplers[2][i] * (1.0f - dev.z);
         float developed = developed_dyes + developed_couplers;
-        float sp = pow(10, -developed) * pd->proj_light[i];
-        exposure.x += pow(10, pd->paper_sense[0][i]/* - opts->color_corr[0]*/) * sp;
-        exposure.y += pow(10, pd->paper_sense[1][i]/* - opts->color_corr[1]*/) * sp;
-        exposure.z += pow(10, pd->paper_sense[2][i]/* - opts->color_corr[2]*/) * sp;
+        float trans = pow(10, -developed);
+        if (opts->mode == NEGATIVE) {
+            xyz1.x += pd->mtx_refl[0][i] * trans;
+            xyz1.y += pd->mtx_refl[1][i] * trans;
+            xyz1.z += pd->mtx_refl[2][i] * trans;
+        } else {
+            float sp = trans * pd->proj_light[i];
+            exposure.x += pow(10, pd->paper_sense[0][i]/* - opts->color_corr[0]*/) * sp;
+            exposure.y += pow(10, pd->paper_sense[1][i]/* - opts->color_corr[1]*/) * sp;
+            exposure.z += pow(10, pd->paper_sense[2][i]/* - opts->color_corr[2]*/) * sp;
+        }
     }
     
-    H = log10(exposure) + opts->paper_exposure;
+    if (!opts->mode == NEGATIVE) {
+        H = log10(exposure) + opts->paper_exposure;
 
-    // Viewing paper
-    float4 xyz1 = 0;
-    for (int i = 0; i < SPECTRUM_SIZE; i++) {
-        /*
-        float r = H.x * pd->paper_gammas[0];
-        float g = H.y * pd->paper_gammas[1];
-        float b = H.z * pd->paper_gammas[2];
-        */
-        float r = sigma(H.x, 0, 3, opts->paper_contrast * pd->paper_gammas[0],
-                            -0.5, opts->curve_smoo);
-        float g = sigma(H.y, 0, 3, opts->paper_contrast * pd->paper_gammas[1],
-                            -0.5, opts->curve_smoo);
-        float b = sigma(H.z, 0, 3, opts->paper_contrast * pd->paper_gammas[2],
-                            -0.5, opts->curve_smoo);
-        float developed = pd->paper_dyes[0][i] * r
-                        + pd->paper_dyes[1][i] * g
-                        + pd->paper_dyes[2][i] * b;
-        float trans = pow(10, -developed);
-        xyz1.x += pd->mtx_refl[0][i] * trans;
-        xyz1.y += pd->mtx_refl[1][i] * trans;
-        xyz1.z += pd->mtx_refl[2][i] * trans;
+        // Viewing paper
+        for (int i = 0; i < SPECTRUM_SIZE; i++) {
+            /*
+            float r = H.x * pd->paper_gammas[0];
+            float g = H.y * pd->paper_gammas[1];
+            float b = H.z * pd->paper_gammas[2];
+            */
+            float r = sigma(H.x, 0, 3, opts->paper_contrast * pd->paper_gammas[0],
+                                -0.5, opts->curve_smoo);
+            float g = sigma(H.y, 0, 3, opts->paper_contrast * pd->paper_gammas[1],
+                                -0.5, opts->curve_smoo);
+            float b = sigma(H.z, 0, 3, opts->paper_contrast * pd->paper_gammas[2],
+                                -0.5, opts->curve_smoo);
+            float developed = pd->paper_dyes[0][i] * r
+                            + pd->paper_dyes[1][i] * g
+                            + pd->paper_dyes[2][i] * b;
+            float trans = pow(10, -developed);
+            xyz1.x += pd->mtx_refl[0][i] * trans;
+            xyz1.y += pd->mtx_refl[1][i] * trans;
+            xyz1.z += pd->mtx_refl[2][i] * trans;
+        }
     }
     
     // Setting output color sRGB

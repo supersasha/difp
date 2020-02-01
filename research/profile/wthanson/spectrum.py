@@ -1,3 +1,4 @@
+import sys
 import math
 import json
 
@@ -64,7 +65,7 @@ class Spectrum:
         self.mtx = reflectance_to_xyz_mtx(self.light)
 
     def savemat(self, filename):
-        print('saved light:', self.light)
+        print('saved light:', self.light, file=sys.stderr)
         mdict = {
             'light': self.light,
             'lambdas': self.lambdas,
@@ -107,7 +108,7 @@ class Spectrum:
 
         for i in range(len(sector_samples)):
             samples = np.vstack(sector_samples[i])
-            print(f'Sector #{i}: {len(samples)} samples')
+            print(f'Sector #{i}: {len(samples)} samples', file=sys.stderr)
             b = extract_basis(samples)
             self.bases.append(SpectralBasis(self.light, b))
 
@@ -150,16 +151,17 @@ if __name__ == '__main__':
         plt.gca().add_patch(
             Rectangle((x, y), w, h, color=colors.xyz_to_srgb(xyz)))
     
-    light = utils.to_400_700_10nm(illum.D55)
+    light = utils.to_400_700_10nm(illum.daylight(6500))
     s = Spectrum(light)
     s.extract_bases()
+    print(s.to_json())
     mtx = reflectance_to_xyz_mtx(s.light)
     while True:
-        srgb = colors.color(random.random()*0.1+0.9, random.random()*0.1, random.random()*0.1)
+        srgb = colors.color(random.random(), random.random(), random.random())
         xyz = colors.srgb_to_xyz(srgb)
         sp, refl = s.spectrum_of(xyz)
         xyz1 = reflectance_to_xyz(mtx, refl)
-        print(f'{colors.delta_E76_xyz(xyz, xyz1):4.1f}', colors.xyz_to_srgb(xyz))
+        print(f'{colors.delta_E76_xyz(xyz, xyz1):4.1f}', colors.xyz_to_srgb(xyz), file=sys.stderr)
         
         plt.figure(figsize=(21,7))
         plt.subplot(121)

@@ -12,6 +12,8 @@
 
 #include "gui.h"
 #include "filebrowser.h"
+#include "dir.h"
+#include "widgets.h"
 #include "jpeg.h"
 #include "texture.h"
 #include "image.h"
@@ -59,15 +61,24 @@ public:
     Rgb32Image processImage(Image& image, const ProcessingOptions& po)
     {
         //std::cout << "(" << image.width << ", " << image.height << ")\n";
-        auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
+        //auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
+        auto sd = load_spectrum_data(
+            std::string("research/profile/wthanson/spectra/") + m_chosenSpectrum
+        );
         //auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
-        auto pd = load_profile_data("research/profile/wthanson/kodak-portra-400-portra-400.json");
+        //auto pd = load_profile_data("research/profile/wthanson/kodak-portra-400-portra-400.json");
+        //auto pd = load_profile_data("research/profile/wthanson/experim-ill-a.json");
+        auto pd = load_profile_data(
+            std::string("research/profile/wthanson/profiles/") + m_chosenProfile
+        );
         auto opts = UserOptions();
         opts.color_corr = Array<3> {m_red, m_green, m_blue};
         opts.film_exposure = m_filmExposure;
         opts.paper_exposure = m_paperExposure;
         opts.paper_contrast = m_paperContrast;
         opts.curve_smoo = m_curveSmoo;
+        //opts.negative = m_filmOnly;
+        opts.mode = m_processingMode;
         opts.frame_horz = po.frame_horz;
         opts.frame_vert = po.frame_vert;
         auto processedImage = process_photo(image, sd, pd, opts);
@@ -136,6 +147,9 @@ public:
 
     void processSmallImage()
     {
+        if (!m_imageLoaded) {
+            return;
+        }
         if (m_inProcessingImage) {
             m_scheduleProcessImage = true;
         } else {
@@ -285,6 +299,7 @@ public:
                         m_origImage = load_image_from_raw_file(fi.path());
                         m_smallImage.resize(0, 0);
                         m_isCrop = false;
+                        m_imageLoaded = true;
 
                         processSmallImage();
 
@@ -296,7 +311,7 @@ public:
                 }
             }
             ImGui::Text("%s", selectedPath.c_str());
-            if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -5, 5, "%.2f")) {
+            if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -2, 2, "%.2f")) {
                 processSmallImage();
             }
             /*
@@ -307,7 +322,29 @@ public:
                 processSmallImage();
             }
             */
-            if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -5, 5, "%.2f")) {
+            const char* processingModeComboItems[] = {
+                "Normal",
+                "Negative",
+                "Identity",
+                "Film exposure"
+            };
+            if (ImGui::IsKeyPressed('O')) {
+                m_processingMode = NORMAL;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('N')) {
+                m_processingMode = NEGATIVE;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('I')) {
+                m_processingMode = IDENTITY;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('F')) {
+                m_processingMode = FILM_EXPOSURE;
+                processSmallImage();
+            }
+            if (ImGui::Combo("Mode", &m_processingMode, processingModeComboItems, 4)) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -1, 1, "%.2f")) {
                 processSmallImage();
             }
             /*
@@ -315,13 +352,13 @@ public:
                 processSmallImage();
             }
             */
-            if (ImGui::SliderFloat("Red", &m_red, 0, 0.2, "%.3f")) {
+            if (ImGui::SliderFloat("Red", &m_red, 0, 1.5, "%.3f")) {
                 processSmallImage();
             }
-            if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 0.2 /*0.8*/, "%.3f")) {
+            if (ImGui::SliderFloat("Green", &m_green, /*0.3*/0, 1.5 /*0.8*/, "%.3f")) {
                 processSmallImage();
             }
-            if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 0.2 /*1.5*/, "%.3f")) {
+            if (ImGui::SliderFloat("Blue", &m_blue, /*0.6*/0, 1.5 /*1.5*/, "%.3f")) {
                 processSmallImage();
             }
             /*
@@ -365,7 +402,7 @@ public:
                 processSmallImage();
             }
             */
-            if (ImGui::SliderFloat("Paper contrast", &m_paperContrast, 0.1, 2, "%.2f")) {
+            if (ImGui::SliderFloat("Paper contrast", &m_paperContrast, 0.1, 4, "%.2f")) {
                 processSmallImage();
             }
             if (ImGui::SliderFloat("Curve smoothness", &m_curveSmoo, 0.01, 1.0, "%.2f")) {
@@ -382,6 +419,20 @@ public:
                 processSmallImage();
             }
             */
+            if (MiniBrowser(
+                "1",
+                [this](){ return m_spectrumDir.files(); },
+                m_chosenSpectrum))
+            {
+                processSmallImage();
+            }
+            if (MiniBrowser(
+                "2",
+                [this](){ return m_profileDir.files(); },
+                m_chosenProfile))
+            {
+                processSmallImage();
+            }
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Debug")) {
@@ -485,12 +536,13 @@ private:
     std::string selectedPath;
     Texture tex;
 
+    bool m_imageLoaded = false;
     Image m_origImage;
     Image m_smallImage;
     float m_filmExposure = 0.0;
-    float m_paperExposure = 0.0; //-1.48; //-3.18;
-    float m_red = 0;
-    float m_green = 0.0; //0.270; //0.349; //0.57; //0.457; //0.438;
+    float m_paperExposure = -0.13; //0.1; //-1.48; //-3.18;
+    float m_red = 0.200;
+    float m_green = 0.085; //0.270; //0.349; //0.57; //0.457; //0.438;
     float m_blue = 0.0; //0.569; //0.614; //0.8; //0.744; //0.765;
 
     bool m_inProcessingImage = false;
@@ -510,13 +562,18 @@ private:
     ImVec2 m_sizeWithFrame = ImVec2(SMALL_WIDTH, SMALL_HEIGHT);
     char m_saveSuffix[16] = "-brute-good";
     float m_filmContrast = 1.0;
-    float m_paperContrast = 1.0;
-    float m_curveSmoo = 0.2;
+    float m_paperContrast = 2.0;
+    float m_curveSmoo = 0.25; //0.27;
     float m_lightThroughFilm = -1.62;
     float m_lightOnPaper = -1.14;
     Debug m_debug;
     Mode m_mode = MODE_IMAGE;
+    int m_processingMode = 0;
     float m_paperFilter[3] = {0, 0.372, 0.530}; //{0, 0.524, 0.406}; //{0, 0.394, 0.310}; //{0, 0.361, 0.248}; //{0, 0.152, 0.056};
+    Dir m_spectrumDir { "research/profile/wthanson/spectra" };
+    std::string m_chosenSpectrum;
+    Dir m_profileDir { "research/profile/wthanson/profiles" };
+    std::string m_chosenProfile;
 };
 
 int main(int, char**)

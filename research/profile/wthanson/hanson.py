@@ -2,6 +2,7 @@ import math
 import json
 import time
 import sys
+import random
 
 import numpy as np
 import argparse
@@ -101,19 +102,35 @@ class Hanson:
         self.ref_waves = np.argmax(dyes, axis=1)
         intrp = PchipInterpolator
         xs = np.arange(31)
-        couplers_at = np.array([
-            [0.0,  q[0], q[1]],
-            [q[2], 0.0,  q[3]],
-            [q[4], q[5], 0.0]
-        ])
+        #couplers_at = np.array([
+        #    [q[9],  q[3], q[4]],
+        #    [q[5], q[10],  q[6]],
+        #    [q[7], q[8], q[11]]
+        #])
+        couplers_at = q[3:].reshape((3, 9))
         couplers = []
+        M = 4
         for idx in range(3):
             dye = dyes[idx]
             idx1, idx2 = brewer.complementary_indices(idx)
             coupler_at = couplers_at[idx]
             spl = intrp(
-                [-5, self.ref_waves[2], self.ref_waves[1], self.ref_waves[0], 36],
-                [0, coupler_at[2], coupler_at[1], coupler_at[0], 0]
+                [-5,
+                    self.ref_waves[2] - M, self.ref_waves[2], self.ref_waves[2] + M,
+                    self.ref_waves[1] - M, self.ref_waves[1], self.ref_waves[1] + M,
+                    self.ref_waves[0] - M, self.ref_waves[0], self.ref_waves[0] + M,
+                    36],
+                [0, 
+                    coupler_at[8],
+                    coupler_at[7],
+                    coupler_at[6],
+                    coupler_at[5],
+                    coupler_at[4],
+                    coupler_at[3],
+                    coupler_at[2],
+                    coupler_at[1],
+                    coupler_at[0],
+                    0]
             )
             couplers.append(spl(xs))
         self.couplers = np.vstack(couplers)
@@ -123,16 +140,17 @@ class Hanson:
     def develop_film(self, H, q):
         dyes = np.diag(self.film_max_qs) @ self.film_dyes
         dev = np.array([
-                zigzag(H[0], q[6], 1.0),
-                zigzag(H[1], q[7], 1.0),
-                zigzag(H[2], q[8], 1.0),
+                zigzag(H[0], q[0], 1.0),
+                zigzag(H[1], q[1], 1.0),
+                zigzag(H[2], q[2], 1.0),
             ])
         developed_dyes = np.diag(dev) @ dyes
         developed_couplers = np.diag(1-dev) @ self.couplers
         developed = developed_dyes + developed_couplers
+        #developed = (developed.transpose() + q[3:6]).transpose()
         return developed
 
-    def develop_paper(self, negative):
+    def develop_paper(self, negative, q):
         trans = brewer.transmittance(negative, np.ones(3))
         sp = trans * self.proj_light
         H1 = np.log10((10.0**self.paper_sense) @ sp) * self.paper_gammas #+ self.brwr.Ks
@@ -154,11 +172,20 @@ class Hanson:
             colors.color(95.05, 100.0, 108.9) / 16,
             colors.color(95.05, 100.0, 108.9) / 32,
             colors.color(95.05, 100.0, 108.9) / 64,
-            #colors.color(45, 27, 10),
+                
+            #colors.color(45.0, 27.0, 10.0),
+            #colors.color(41.0, 21.0, 2.0) / 1,
+            #colors.color(40.0, 21.5, 2.1) / 2,
+            #colors.color(41.5, 22.0, 1.8) / 4,
 
             #colors.color(11.0, 20.0, 6.0),
             #colors.color(13.0, 9.0, 53.0),
         ]
+
+        #xyzs = []
+        #for i in range(20):
+        #    c = colors.color(random.random(), random.random(), random.random())
+        #    xyzs.append(colors.srgb_to_xyz(c))
 
         def f(x):
             self.make_couplers(x)
@@ -169,10 +196,13 @@ class Hanson:
                 d += d0*d0
             return d
 
-        bounds = [(0.0001, 2.0)] * 9
+        bounds = [(0.0001, 2.0)] * 30
         
-        #r = opt.dual_annealing(f, bounds, maxiter=1000)
-        r = opt.minimize(f, np.ones(9), bounds=bounds)
+        def cb(x, f, ctx):
+            print(f, x, ctx, file=sys.stderr)
+        #r = opt.dual_annealing(f, bounds, maxiter=1000, callback=cb)
+        r = opt.minimize(f, np.ones(30), bounds=bounds, method='L-BFGS-B',
+                options={'maxiter': 2000, 'maxfun': 1000000})
         print(r, file=sys.stderr)
         self.solution = r.x
         
@@ -182,7 +212,7 @@ class Hanson:
         H = np.log10(brewer.exposure(self.film_sense, sp))
 
         negative = self.develop_film(H, q)
-        positive = self.develop_paper(negative)
+        positive = self.develop_paper(negative, q)
 
         trans = brewer.transmittance(positive, np.ones(3))
         xyz1 = spectrum.transmittance_to_xyz(self.mtx_refl, trans)
@@ -291,8 +321,9 @@ class Hanson:
             'paper_dyes': self.paper_dyes.tolist(), # 3x31
             'couplers': self.couplers.tolist(), # 3x31
             'proj_light': self.proj_light.tolist(), # 31
+            'dev_light': self.dev_light.tolist(), # 31
             'mtx_refl': self.mtx_refl.tolist(), # 3x31
-            'neg_gammas': self.solution[6:].tolist(), #self.neg_gammas.diagonal().tolist(), # 3
+            'neg_gammas': self.solution[:3].tolist(), #self.neg_gammas.diagonal().tolist(), # 3
             'paper_gammas': self.paper_gammas.tolist(), # 3
             'film_max_qs': self.film_max_qs.tolist() # 3
         }
@@ -323,10 +354,12 @@ def arguments():
 def cmd_mkprof(opts):
     film = FilmProfile(opts.film, mode31=True)
     paper = FilmProfile(opts.paper, mode31=True)
-    hanson = Hanson(film, paper, max_density=1.0, paper_gammas=4.0)
+    hanson = Hanson(film, paper, max_density=1.0, paper_gammas=2.0)
     hanson.solve()
     hanson.make_couplers(hanson.solution)
     print(hanson.to_json())
+    plt.plot(hanson.couplers.transpose())
+    plt.show()
     #print(hanson.refl_gen.to_json())
 
 def cmd_demo(opts):
