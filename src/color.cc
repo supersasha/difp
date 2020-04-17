@@ -1,4 +1,5 @@
 #include "color.h"
+#include "array_ops.h"
 
 #include <math.h>
 
@@ -150,4 +151,114 @@ Color xyz_to_srgb(const Color& c)
     else if(b > 1.0f)
         b = 1.0f;
     return Color(r, g, b);
+}
+
+Color srgb_to_xyz(const Color& c)
+{
+    float r = c.c[0];
+    float g = c.c[1];
+    float b = c.c[2];
+
+    if(r > 0.04045)
+        r = pow((r + 0.055) / 1.055, 2.4);
+    else
+        r /= 12.92;
+
+    if(g > 0.04045)
+        g = pow((g + 0.055) / 1.055, 2.4);
+    else
+        g /= 12.92;
+
+    if(b > 0.04045)
+        b = pow((b + 0.055) / 1.055, 2.4);
+    else
+        b /= 12.92;
+
+    r *= 100.0;
+    g *= 100.0;
+    b *= 100.0;
+
+    float x = r * 0.4124 + g * 0.3576 + b * 0.1805;
+    float y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+    float z = r * 0.0193 + g * 0.1192 + b * 0.9505;
+
+    return Color(x, y, z);
+}
+
+const float ref_x = 95.047;
+const float ref_y = 100.0;
+const float ref_z = 108.883;
+
+Color xyz_to_lab(const Color& c)
+{
+    float x = c.c[0] / ref_x;
+    float y = c.c[1] / ref_y;
+    float z = c.c[2] / ref_z;
+
+    if(x > 0.008856)
+        x = cbrt(x);
+    else
+        x = 7.787 * x + 16.0/116.0;
+
+    if(y > 0.008856)
+        y = cbrt(y);
+    else
+        y = 7.787 * y + 16.0/116.0;
+
+    if(z > 0.008856)
+        z = cbrt(z);
+    else
+        z = 7.787 * z + 16.0/116.0;
+
+    return Color(116.0 * y - 16.0, 500.0 * (x - y), 200.0 * (y - z));
+}
+
+double delta_E76_lab(const Color& lab1, const Color& lab2)
+{
+    // Minimum noticible distance is 2.3 (not actually truth)
+    Color d = lab1 - lab2;
+    return sqrt(d.c[0]*d.c[0] + d.c[1]*d.c[1] + d.c[2]*d.c[2]);
+}
+
+double delta_E76_xyz(const Color& xyz1, const Color& xyz2)
+{
+    return delta_E76_lab(xyz_to_lab(xyz1), xyz_to_lab(xyz2));
+}
+
+const Array<31> D_S0 = {{
+     94.80, 104.80, 105.90,  96.80, 113.90, 125.60, 125.50, 121.30, 121.30, 113.50,
+    113.10, 110.80, 106.50, 108.80, 105.30, 104.40, 100.00,  96.00,  95.10,  89.10,
+     90.50,  90.30,  88.40,  84.00,  85.10,  81.90,  82.60,  84.90,  81.30,  71.90,
+     74.30
+}};
+
+const Array<31> D_S1 = {{
+     43.40, 46.30, 43.90, 37.10,  36.70,  35.90,  32.60,  27.90,  24.30,  20.10,
+     16.20, 13.20,  8.60,  6.10,   4.20,   1.90,   0.00,  -1.60,  -3.50,  -3.50,
+     -5.80, -7.20, -8.60, -9.50, -10.90, -10.70, -12.00, -14.00, -13.60, -12.00,
+    -13.30
+}};
+
+const Array<31> D_S2 = {{
+    -1.10, -0.50, -0.70, -1.20, -2.60, -2.90, -2.80, -2.60, -2.60, -1.80,
+    -1.50, -1.30, -1.20, -1.00, -0.50, -0.30,  0.00,  0.20,  0.50,  2.10,
+     3.20,  4.10,  4.70,  5.10,  6.70,  7.30,  8.60,  9.80, 10.20,  8.30,
+     9.60
+}};
+
+Array<31> daylight_spectrum(double temp)
+{
+    double x = 0;
+    double s = 1000 / temp;
+
+    if (temp <= 7000) {
+        x = (((-4.607 * s) + 2.9678) * s + 0.09911) * s + 0.244063;
+    } else {
+        x = (((-2.0064 * s) + 1.9018) * s + 0.24748) * s + 0.237040;
+    }
+    double y = (-3.0 * x + 2.870) * x - 0.275;
+    double m = 0.0241 + 0.2562 * x - 0.7341 * y;
+    double m1 = (-1.3515 - 1.7703 * x + 5.9114 * y) / m;
+    double m2 = (0.030 - 31.4424 * x + 30.0717 * y) / m;
+    return D_S0 + m1 * D_S1 + m2 * D_S2;
 }

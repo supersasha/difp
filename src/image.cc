@@ -24,6 +24,9 @@ Image load_image_from_raw_file(const std::string& filename)
     
     raw.imgdata.params.gamm[0] = 1.0; //1.0 / 2.4;
     raw.imgdata.params.gamm[1] = 1.0; //12.92;
+
+    //raw.imgdata.params.aber[0] = 1.001;
+    //raw.imgdata.params.aber[1] = 1.001;
     
     raw.open_file(filename.c_str());
     raw.unpack();

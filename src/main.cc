@@ -63,7 +63,7 @@ public:
         //std::cout << "(" << image.width << ", " << image.height << ")\n";
         //auto sd = load_spectrum_data("research/profile/wthanson/spectrum.json");
         auto sd = load_spectrum_data(
-            std::string("research/profile/wthanson/spectra/") + m_chosenSpectrum
+            std::string("research/profile/wthanson/spectra2/") + m_chosenSpectrum
         );
         //auto pd = load_profile_data("research/profile/wthanson/kodak-vision-250d-5207.json");
         //auto pd = load_profile_data("research/profile/wthanson/kodak-portra-400-portra-400.json");
@@ -82,64 +82,6 @@ public:
         opts.frame_horz = po.frame_horz;
         opts.frame_vert = po.frame_vert;
         auto processedImage = process_photo(image, sd, pd, opts);
-        Rgb32Image img = convert_image_to_rgb32(processedImage);
-        return img;
-        //tex.load(img);
-    }
-
-    Rgb32Image processImageOld(Image& image, const ProcessingOptions& po)
-    {
-        //std::string filmFile = "profiles/film/kodak-portra-400-new-v5.film";
-        //std::string paperFile = "profiles/paper/kodak-endura-new-v5.paper";
-        std::string filmFile = "profiles/film/kodak-portra-400-experim-v2.film";
-        std::string paperFile = "profiles/paper/kodak-endura-experim.paper";
-
-        PhotoProcessOpts opts;
-        opts.exposure_correction_film = m_filmExposure;
-        opts.exposure_correction_paper = m_paperExposure;
-
-        std::ifstream ffilm(filmFile);
-        json jfilm;
-        ffilm >> jfilm;
-        
-        std::ifstream fpaper(paperFile);
-        json jpaper;
-        fpaper >> jpaper;
-
-        opts.film = jfilm;
-        opts.paper = jpaper;
-        
-        std::ifstream fia("profiles/illuminants/a.illuminant");
-        json jia;
-        fia >> jia;
-        
-        std::ifstream fid65("profiles/illuminants/d65.illuminant");
-        json jid65;
-        fid65 >> jid65;
-
-        opts.illuminant1 = jia;
-        opts.illuminant2 = jid65;
-
-        opts.extra.psr = m_red;
-        opts.extra.psg = m_green;
-        opts.extra.psb = m_blue;
-        opts.extra.linear_amp = m_linAmp;
-        opts.extra.pixel = po.pixel_y * image.width + po.pixel_x;
-        opts.extra.stop = m_filmOnly ? 1 : 0;
-        opts.extra.layer2d = m_layer2d;
-
-        opts.extra.frame_horz = po.frame_horz;
-        opts.extra.frame_vert = po.frame_vert;
-        opts.extra.film_contrast = m_filmContrast;
-        opts.extra.paper_contrast = m_paperContrast;
-        opts.extra.light_through_film = m_lightThroughFilm;
-        opts.extra.light_on_paper = m_lightOnPaper;
-        opts.extra.paper_filter[0] = m_paperFilter[0];
-        opts.extra.paper_filter[1] = m_paperFilter[1];
-        opts.extra.paper_filter[2] = m_paperFilter[2];
-
-        auto processedImage = process_photo_old(image, opts);
-        m_debug = opts.debug;
         Rgb32Image img = convert_image_to_rgb32(processedImage);
         return img;
         //tex.load(img);
@@ -242,6 +184,8 @@ public:
                 if (!m_isCrop) {
                     m_pixelX = x;
                     m_pixelY = y;
+                    auto px = m_smallImage.data[m_smallImage.width * y + x];
+                    std::cout << "Clicked on: " << px.to_array() << "\n";
                     processSmallImage();
                 }
             } else {
@@ -314,19 +258,16 @@ public:
             if (ImGui::SliderFloat("Film exposure", &m_filmExposure, -2, 2, "%.2f")) {
                 processSmallImage();
             }
-            /*
-            if (ImGui::SliderFloat("Light through film", &m_lightThroughFilm, -5, 5, "%.2f")) {
-                processSmallImage();
-            }
-            if (ImGui::Checkbox("Film only", &m_filmOnly)) {
-                processSmallImage();
-            }
-            */
             const char* processingModeComboItems[] = {
                 "Normal",
                 "Negative",
                 "Identity",
-                "Film exposure"
+                "Film exposure",
+                "Generated spectrum",
+                "Film dev",
+                "Paper exposure",
+                "Film H < 0",
+                "Paper H < 0"
             };
             if (ImGui::IsKeyPressed('O')) {
                 m_processingMode = NORMAL;
@@ -340,11 +281,27 @@ public:
             } else if (ImGui::IsKeyPressed('F')) {
                 m_processingMode = FILM_EXPOSURE;
                 processSmallImage();
-            }
-            if (ImGui::Combo("Mode", &m_processingMode, processingModeComboItems, 4)) {
+            } else if (ImGui::IsKeyPressed('G')) {
+                m_processingMode = GEN_SPECTR;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('D')) {
+                m_processingMode = FILM_DEV;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('P')) {
+                m_processingMode = PAPER_EXPOSURE;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('1')) {
+                m_processingMode = FILM_NEG_LOG_EXP;
+                processSmallImage();
+            } else if (ImGui::IsKeyPressed('2')) {
+                m_processingMode = PAPER_NEG_LOG_EXP;
                 processSmallImage();
             }
-            if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -1, 1, "%.2f")) {
+            if (ImGui::Combo("Mode", &m_processingMode, processingModeComboItems, 
+                    sizeof(processingModeComboItems) / sizeof(const char*))) {
+                processSmallImage();
+            }
+            if (ImGui::SliderFloat("Paper exposure", &m_paperExposure, -5, 5, "%.2f")) {
                 processSmallImage();
             }
             /*
@@ -540,9 +497,9 @@ private:
     Image m_origImage;
     Image m_smallImage;
     float m_filmExposure = 0.0;
-    float m_paperExposure = -0.13; //0.1; //-1.48; //-3.18;
-    float m_red = 0.200;
-    float m_green = 0.085; //0.270; //0.349; //0.57; //0.457; //0.438;
+    float m_paperExposure = 0.0; //0.1; //-1.48; //-3.18;
+    float m_red = 0.0;
+    float m_green = 0.0; //0.270; //0.349; //0.57; //0.457; //0.438;
     float m_blue = 0.0; //0.569; //0.614; //0.8; //0.744; //0.765;
 
     bool m_inProcessingImage = false;
@@ -556,21 +513,18 @@ private:
     int m_pixelY = 0;
     float m_linAmp = 0.0; //428.5;
     bool m_filmOnly = false;
-    float m_layer2d = 1.2;
     int m_paperFormatIdx = 10;
     float m_frameWidthRatio = 0;
     ImVec2 m_sizeWithFrame = ImVec2(SMALL_WIDTH, SMALL_HEIGHT);
-    char m_saveSuffix[16] = "-brute-good";
+    char m_saveSuffix[16] = "-pa";
     float m_filmContrast = 1.0;
-    float m_paperContrast = 2.0;
-    float m_curveSmoo = 0.25; //0.27;
-    float m_lightThroughFilm = -1.62;
-    float m_lightOnPaper = -1.14;
+    float m_paperContrast = 1.0;
+    float m_curveSmoo = 0.01; //0.27;
     Debug m_debug;
     Mode m_mode = MODE_IMAGE;
     int m_processingMode = 0;
-    float m_paperFilter[3] = {0, 0.372, 0.530}; //{0, 0.524, 0.406}; //{0, 0.394, 0.310}; //{0, 0.361, 0.248}; //{0, 0.152, 0.056};
-    Dir m_spectrumDir { "research/profile/wthanson/spectra" };
+    float m_paperFilter[3] = {0, 0, 0}; //{0, 0.524, 0.406}; //{0, 0.394, 0.310}; //{0, 0.361, 0.248}; //{0, 0.152, 0.056};
+    Dir m_spectrumDir { "research/profile/wthanson/spectra2" };
     std::string m_chosenSpectrum;
     Dir m_profileDir { "research/profile/wthanson/profiles" };
     std::string m_chosenProfile;

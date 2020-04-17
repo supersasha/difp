@@ -1,21 +1,15 @@
 #pragma once
 
 #include <string>
-#include <array>
 
-template<size_t N> using Array = std::array<float, N>;
-template<size_t ROWS, size_t COLS> using Array2D =
-    std::array<std::array<float, COLS>, ROWS>;
-template<size_t N, size_t ROWS, size_t COLS> using Array3D =
-    std::array<std::array<std::array<float, COLS>, ROWS>, N>;
+#include "arrays.h"
 
 struct SpectrumData
 {
     Array<2> wp;
-    Array2D<6, 2> sectors;
     Array<31> light;
-    Array3D<7, 3, 31> bases;
-    Array3D<7, 3, 3> tri_to_v_mtx;
+    Array2D<3, 31> base;
+    Array2D<3, 3> tri_to_v_mtx;
 };
 
 SpectrumData load_spectrum_data(const std::string& filename);
@@ -39,12 +33,25 @@ struct ProfileData
 
 ProfileData load_profile_data(const std::string& filename);
 
+struct Datasheet
+{
+    Array2D<3, 31> sense;
+    Array2D<3, 31> dyes;
+};
+
+Datasheet load_datasheet(const std::string& filename);
+
 enum ProcessingMode
 {
     NORMAL = 0,
     NEGATIVE,
     IDENTITY,
-    FILM_EXPOSURE 
+    FILM_EXPOSURE,
+    GEN_SPECTR,
+    FILM_DEV,
+    PAPER_EXPOSURE,
+    FILM_NEG_LOG_EXP,
+    PAPER_NEG_LOG_EXP
 };
 
 struct UserOptions

@@ -4,15 +4,16 @@
 #include <json.hpp>
 using json = nlohmann::json;
 
-void from_json(const json& j, SpectrumData& sd) {
+void from_json(const json& j, SpectrumData& sd)
+{
     j.at("wp").get_to(sd.wp);
-    j.at("sectors").get_to(sd.sectors);
     j.at("light").get_to(sd.light);
-    j.at("bases").get_to(sd.bases);
+    j.at("base").get_to(sd.base);
     j.at("tri_to_v_mtx").get_to(sd.tri_to_v_mtx);
 }
 
-void from_json(const json& j, ProfileData& pd) {
+void from_json(const json& j, ProfileData& pd)
+{
     j.at("film_sense").get_to(pd.film_sense);
     j.at("film_dyes").get_to(pd.film_dyes);
     j.at("paper_sense").get_to(pd.paper_sense);
@@ -26,6 +27,34 @@ void from_json(const json& j, ProfileData& pd) {
     j.at("neg_gammas").get_to(pd.neg_gammas);
     j.at("paper_gammas").get_to(pd.paper_gammas);
     j.at("film_max_qs").get_to(pd.film_max_qs);
+}
+
+Array<31> cv65to31(const Array<65>& a1)
+{
+    Array<31> a;
+    int o = 0;
+    for (int i = 4; i < 65; i += 2, o++) {
+        a[o] = a1[i];
+    }
+    return a;
+}
+
+void from_json(const json& j, Datasheet& ds)
+{
+    Array<65> a;
+    j.at("red").at("sense").get_to(a);
+    ds.sense[0] = cv65to31(a);
+    j.at("green").at("sense").get_to(a);
+    ds.sense[1] = cv65to31(a);
+    j.at("blue").at("sense").get_to(a);
+    ds.sense[2] = cv65to31(a);
+
+    j.at("red").at("dye").at("data").get_to(a);
+    ds.dyes[0] = cv65to31(a);
+    j.at("green").at("dye").at("data").get_to(a);
+    ds.dyes[1] = cv65to31(a);
+    j.at("blue").at("dye").at("data").get_to(a);
+    ds.dyes[2] = cv65to31(a);
 }
 
 SpectrumData load_spectrum_data(const std::string& filename)
@@ -44,3 +73,10 @@ ProfileData load_profile_data(const std::string& filename)
     return jpd;
 }
 
+Datasheet load_datasheet(const std::string& filename)
+{
+    std::ifstream fds(filename);
+    json jds;
+    fds >> jds;
+    return jds;
+}
