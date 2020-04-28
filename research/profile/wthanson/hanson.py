@@ -477,21 +477,22 @@ def cmd_analyze(opts):
         with open(opts.profile) as f:
             js = f.read()
             q = hanson.from_json(js)
-    xyzs = reference_colors()
-    d2sum = 0
-    dsum = 0
-    for xyz, v in xyzs:
-        xyz1 = hanson.develop(xyz, q)
-        srgb = colors.xyz_to_srgb(xyz)
-        srgb1 = colors.xyz_to_srgb(xyz1)
-        d = colors.delta_E76_xyz(xyz, xyz1)
-        d2sum += d*d
-        dsum += d
-        print(f'{srgb} --> {srgb1}: {d}')
-    print(d2sum, dsum, dsum/len(xyzs))
-    plt.plot(hanson.couplers[0], 'r')
-    plt.plot(hanson.couplers[1], 'g')
-    plt.plot(hanson.couplers[2], 'b')
+    #xyzs = reference_colors()
+    #d2sum = 0
+    #dsum = 0
+    #for xyz, v in xyzs:
+    #    xyz1 = hanson.develop(xyz, q)
+    #    srgb = colors.xyz_to_srgb(xyz)
+    #    srgb1 = colors.xyz_to_srgb(xyz1)
+    #    d = colors.delta_E76_xyz(xyz, xyz1)
+    #    d2sum += d*d
+    #    dsum += d
+    #    print(f'{srgb} --> {srgb1}: {d}')
+    #print(d2sum, dsum, dsum/len(xyzs))
+    xs = np.linspace(400, 700, 31)
+    plt.plot(xs, hanson.couplers[0], 'r')
+    plt.plot(xs, hanson.couplers[1], 'g')
+    plt.plot(xs, hanson.couplers[2], 'b')
     plt.show()
 
 def cmd_demo(opts):

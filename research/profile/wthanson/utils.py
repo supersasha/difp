@@ -43,3 +43,10 @@ def to_400_700_10nm(vec_380_700_5nm):
     xsp = np.linspace(400, 700, 31)
     sp = CubicSpline(xs, vec_380_700_5nm, bc_type='natural')
     return sp(xsp)
+
+def cv65to31(a):
+    r = []
+    for i in range(4, 65, 2):
+        r.append(a[i])
+    return np.array(r)
+

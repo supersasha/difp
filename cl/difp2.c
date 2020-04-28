@@ -1,7 +1,7 @@
 /*
  * Color conversions
  */
-
+/*
 float A_1931_64[31][3] = {
     { 0.0191097, 0.0020044, 0.0860109 },
     { 0.084736, 0.008756, 0.389366 },
@@ -35,6 +35,7 @@ float A_1931_64[31][3] = {
     { 0.0199413, 0.0077488, 0 },
     { 0.00957688, 0.00371774, 0 }
 };
+*/
 
 float4 xyz_to_srgb_scalar(float4 c)
 {
@@ -216,6 +217,18 @@ float zigzag_p(float x, float gamma, float ymax)
     return y;
 }
 
+float zigzag1(float x, float ymin, float ymax, float gamma, float bias)
+{
+    if (x <= bias) {
+        return ymin;
+    }
+    float y = ymin + gamma * (x - bias);
+    if (y > ymax) {
+        return ymax;
+    }
+    return y;
+}
+
 /*
  * Process film
  */
@@ -280,9 +293,9 @@ __kernel void process_photo(
             zzz.z += pd->mtx_refl[2][i] * refl;
         }
 
-        exposure.x += pow(10, pd->film_sense[0][i] - opts->color_corr[0]) * sp;
-        exposure.y += pow(10, pd->film_sense[1][i] - opts->color_corr[1]) * sp;
-        exposure.z += pow(10, pd->film_sense[2][i] - opts->color_corr[2]) * sp;
+        exposure.x += pow(10, pd->film_sense[0][i] - 4.149f - opts->color_corr[0]) * sp;
+        exposure.y += pow(10, pd->film_sense[1][i] - 5.997f - opts->color_corr[1]) * sp;
+        exposure.z += pow(10, pd->film_sense[2][i] - 1.309f - opts->color_corr[2]) * sp;
     }
 
     if (opts->mode == GEN_SPECTR) {
@@ -309,18 +322,13 @@ __kernel void process_photo(
 
     float4 dev = (float4) (
             /*
-        sigma_old(H.x, 0, 1.0f, pd->neg_gammas[0], 0, opts->curve_smoo),
-        sigma_old(H.y, 0, 1.0f, pd->neg_gammas[1], 0, opts->curve_smoo),
-        sigma_old(H.z, 0, 1.0f, pd->neg_gammas[2], 0, opts->curve_smoo),
-            */
-        sigma_to(H.x, 0, 1, /*0.5f * 0.4f */ pd->neg_gammas[0], opts->curve_smoo, 0),
-        sigma_to(H.y, 0, 1, /*0.5f * 0.45f*/ pd->neg_gammas[1], opts->curve_smoo, 0),
-        sigma_to(H.z, 0, 1, /*0.5f * 0.5f */ pd->neg_gammas[2], opts->curve_smoo, 0),
-            /*
-        zigzag(H.x, pd->neg_gammas[0], 1.0f),
-        zigzag(H.y, pd->neg_gammas[1], 1.0f),
-        zigzag(H.z, pd->neg_gammas[2], 1.0f),
-            */
+        sigma_to(H.x, 0, 1, pd->neg_gammas[0], opts->curve_smoo, 0),
+        sigma_to(H.y, 0, 1, pd->neg_gammas[1], opts->curve_smoo, 0),
+        sigma_to(H.z, 0, 1, pd->neg_gammas[2], opts->curve_smoo, 0),
+        */
+        sigma_to(H.x, 0, 4, 0.812f, /*opts->curve_smoo*/0.02f, 0),
+        sigma_to(H.y, 0, 4, 0.533f, /*opts->curve_smoo*/0.02f, 0),
+        sigma_to(H.z, 0, 4, 0.540f, /*opts->curve_smoo*/0.02f, 0),
         0
     );
 
@@ -338,20 +346,20 @@ __kernel void process_photo(
                              + pd->film_dyes[1][i] * dev.y
                              + pd->film_dyes[2][i] * dev.z
                              ;
-        float developed_couplers = pd->couplers[0][i] * (1.0f - dev.x)
-                                 + pd->couplers[1][i] * (1.0f - dev.y)
-                                 + pd->couplers[2][i] * (1.0f - dev.z);
+        float developed_couplers = pd->couplers[0][i] * (1.0f - dev.x / 4.0f)
+                                 + pd->couplers[1][i] * (1.0f - dev.y / 4.0f)
+                                 + pd->couplers[2][i] * (1.0f - dev.z / 4.0f);
         float developed = developed_dyes + developed_couplers;
         float trans = pow(10, -developed);
         if (opts->mode == NEGATIVE) {
-            xyz1.x += pd->mtx_refl[0][i] * trans;
-            xyz1.y += pd->mtx_refl[1][i] * trans;
-            xyz1.z += pd->mtx_refl[2][i] * trans;
+            xyz1.x += pd->mtx_refl[0][i] * trans * 1000000;
+            xyz1.y += pd->mtx_refl[1][i] * trans * 1000000;
+            xyz1.z += pd->mtx_refl[2][i] * trans * 1000000;
         } else {
             float sp = trans * pd->proj_light[i];
-            exposure.x += pow(10, pd->paper_sense[0][i]) * sp;
-            exposure.y += pow(10, pd->paper_sense[1][i]) * sp;
-            exposure.z += pow(10, pd->paper_sense[2][i]) * sp;
+            exposure.x += pow(10, pd->paper_sense[0][i] - 0.995f) * sp;
+            exposure.y += pow(10, pd->paper_sense[1][i] - 0.373f) * sp;
+            exposure.z += pow(10, pd->paper_sense[2][i] + 1.420f) * sp;
         }
     }
     
@@ -375,7 +383,7 @@ __kernel void process_photo(
 
         // Viewing paper
         for (int i = 0; i < SPECTRUM_SIZE; i++) {
-#define SIGMA 1
+#define SIGMA 4
 #if SIGMA == 0
             float r = H.x * pd->paper_gammas[0] * opts->paper_contrast;
             float g = H.y * pd->paper_gammas[1] * opts->paper_contrast;
@@ -399,6 +407,10 @@ __kernel void process_photo(
                                 -0.5, opts->curve_smoo);
             float b = sigma_old(H.z, 0, 3, opts->paper_contrast * pd->paper_gammas[2],
                                 -0.5, opts->curve_smoo);
+#elif SIGMA == 4
+            float r = sigma_from(H.x, 0, 4, 5.0f * opts->paper_contrast, opts->curve_smoo, 0);
+            float g = sigma_from(H.y, 0, 4, 5.0f * opts->paper_contrast, opts->curve_smoo, 0);
+            float b = sigma_from(H.z, 0, 4, 5.0f * opts->paper_contrast, opts->curve_smoo, 0);
 #endif
             float developed = pd->paper_dyes[0][i] * r
                             + pd->paper_dyes[1][i] * g
@@ -411,7 +423,7 @@ __kernel void process_photo(
     }
     
     // Setting output color sRGB
-    float4 c = xyz_to_srgb_scalar(xyz1 * 10.0f);
+    float4 c = xyz_to_srgb_scalar(xyz1 * 0.966f);
     out_img[out_idx] = c;
 }
 

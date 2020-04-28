@@ -3,6 +3,8 @@ from data import D_S0, D_S1, D_S2, SPECTRE_SIZE, ILLUM_A
 import data
 import colors
 
+from utils import cv65to31
+
 def daylight(temp):
     x = 0
     s = 1000 / temp
@@ -27,24 +29,28 @@ def normalize(ill):
     return ill / np.sum(ill)
 
 D50 = daylight(5000)
+D50_31 = cv65to31(D50)
 D55 = daylight(5500)
+D55_31 = cv65to31(D55)
 D65 = daylight(6500)
+D65_31 = cv65to31(D65)
 
 D50N = normalize(D50)
+D50N_31 = cv65to31(D50N)
 D55N = normalize(D55)
+D55N_31 = cv65to31(D55N)
 D65N = normalize(D65)
+D65N_31 = cv65to31(D65N)
 
 A = ILLUM_A
+A_31 = cv65to31(A)
 AN = normalize(A)
+AN_31 = cv65to31(AN)
 
 E = 100.0 * np.ones(SPECTRE_SIZE)
+E_31 = cv65to31(E)
 EN = normalize(E)
-
-#def to_400_700_10nm(ill_380_700_5nm):
-#    xs = np.linspace(380, 700, 65)
-#    xsp = np.linspace(400, 700, 31)
-#    sp = CubicSpline(xs, ill_380_700_5nm, bc_type='natural')
-#    return sp(xsp)
+EN_31 = cv65to31(EN)
 
 def white_point(ill_400_700):
     xyz = np.dot(data.A_1931_64_400_700_10nm.transpose(), ill_400_700)

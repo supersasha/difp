@@ -69,6 +69,47 @@ float zigzag_p(float x, float gamma, float ymax)
     return y;
 }
 
+float zigzag_from(float x, float ymin, float ymax, float gamma, float bias)
+{
+    if (x <= bias) {
+        return ymin;
+    }
+    float y = ymin + gamma * (x - bias);
+    if (y > ymax) {
+        return ymax;
+    }
+    return y;
+}
+
+float zigzag_to(float x, float ymin, float ymax, float gamma, float bias)
+{
+    if (x >= bias) {
+        return ymax;
+    }
+    float y = ymax + gamma * (x - bias);
+    if (y < ymin) {
+        return ymin;
+    }
+    return y;
+}
+
+float sigma(float x, float ymin, float ymax, float gamma, float bias, float smoo)
+{
+    float a = (ymax - ymin) / 2;
+    float y = gamma * (x - bias) / a;
+    return a * (y / pow(1 + pow(fabs(y), 1/smoo), smoo) + 1) + ymin;
+}
+
+float sigma_from(float x, float ymin, float ymax, float gamma, float smoo, float x0)
+{
+    float avg = (ymax + ymin) / 2;
+
+    // gamma * (x0 - bias) + avg = ymin
+    
+    float bias = x0 - (ymin - avg) / gamma;
+    return sigma(x, ymin, ymax, gamma, bias, smoo);
+}
+
 double bell(double a, double mu, double sigma, double x)
 {
     double d = (x - mu) / sigma;
@@ -233,11 +274,12 @@ std::vector<ColorW> reference_colors()
     }
     */
     auto vs = linspace(0.1, 1, 5);
-    for (const auto v: vs) {
+    for (int i = 0; i < vs.size(); i++) {
+        auto v = vs[i];
         res.emplace_back(ColorW{srgb_to_xyz(Color(v, 0, 0)), 1});
         res.emplace_back(ColorW{srgb_to_xyz(Color(0, v, 0)), 1});
         res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, 0)), 1});
-        res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, v)), 1});
+        res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, v)), 1 /*(i == 4) ? 5 : 1*/});
     }
     return res;
 }
@@ -276,8 +318,13 @@ double couplers_opt_func(unsigned n, const double * x,
 class Optimizer
 {
 public:
-    static constexpr int N_PARAMS = 8 + 3*3*4; //21; //48;
+    static constexpr int N_FREE_PARAMS = 10;
+    static constexpr int N_GAUSSIANS = 2;
+    static constexpr int N_COUPLED_LAYERS = 0;
+    static constexpr int N_GAUSSIAN_PARAMS = 3 * N_COUPLED_LAYERS * N_GAUSSIANS;
+    static constexpr int N_PARAMS = N_FREE_PARAMS + N_GAUSSIAN_PARAMS;
     using ParamVec = Array<N_PARAMS>;
+    ParamVec m_solution;
 
     Optimizer()
     {
@@ -319,80 +366,72 @@ public:
         std::cout << "nd2: " << nd2 << "\n";
         */
         nlopt_opt opt = nlopt_create(NLOPT_GN_ISRES, N_PARAMS);
+        //nlopt_set_population(opt, 5000);
         nlopt_set_min_objective(opt, couplers_opt_func, this);
-        /*
-        double lb[] = {0.0001, 0.0001, 0.0001,
-        //                -1, -1,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                    };
-        double ub[] = {1, 1, 1,
-        //                1, 1,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                    };
-        */
-        double lb[] = {0.0001, 0.0001, 0.0001,
-                        -1, -1, -1,
-                        0, 1,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                        0.0001, 350, 20,
-                    };
-        double ub[] = {1, 1, 1,
-                        1, 1, 1,
-                        1, 20,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                        3, 750, 200,
-                    };
+        double lb[N_PARAMS] = {
+            // film: gamma
+            0, 0, 0,
+
+            // paper
+            //0, 0, 0,
+
+            -6, -6, -6,
+            -6, -6, -6,
+            //0,
+
+            0.1,
+                        
+            /*
+            0.0001, 350, 20,
+            0.0001, 350, 20,
+            0.0001, 350, 20,
+            0.0001, 350, 20,
+            0.0001, 350, 20,
+            0.0001, 350, 20,
+            */
+        };
+        double ub[N_PARAMS] = {
+            3, 1, 1,
+            //5, 5, 5,
+
+            6, 6, 6,
+            6, 6, 6,
+            //6,
+
+            10,
+
+            /*
+            1, 750, 50,
+            1, 750, 50,
+            1, 750, 50,
+            1, 750, 50,
+            1, 750, 50,
+            1, 750, 50,
+            */
+        };
+        double opt_x[N_PARAMS] = {
+            0.5, 0.5, 0.5,
+            //1, 1, 1,
+
+            0, 0, 0,
+            0, 0, 0,
+            //0,
+
+            1,
+
+            /*
+            0.5, 500, 30,
+            0.5, 500, 30,
+            0.5, 500, 30,
+            0.5, 500, 30,
+            0.5, 500, 30,
+            0.5, 500, 30,
+            */
+        };
         nlopt_set_lower_bounds(opt, lb);
         nlopt_set_upper_bounds(opt, ub);
         nlopt_set_maxtime(opt, 60 * 30);
+        /*
         double opt_x[] = {0.5, 0.5, 0.5,
                             0, 0, 0,
                             0.5, 10,
@@ -409,25 +448,29 @@ public:
                             0.5, 500, 100,
                             0.5, 500, 100,
                         };
-        double opt_f;
+        */
+        double opt_f = 0;
         auto r = nlopt_optimize(opt, opt_x, &opt_f);
         std::cerr << "r: " << r << "; f: " << opt_f << "\n";
 
-        m_solution = array_from_ptr<double, N_PARAMS>(opt_x);
+        //m_solution = array_from_ptr<double, N_PARAMS>(opt_x);
         nlopt_destroy(opt);
         //return res;
     }
 
-    double opt_fun(const ParamVec& q)
+    double opt_fun(const ParamVec& q, bool print = false)
     {
         make_couplers(q);
         double d = 0;
         for (const auto xyzw: m_xyzs) {
-            //std::cout << "xyz: " << xyzw.color.to_array() << "\n";
             Color xyz1 = develop(xyzw.color, q);
-            //std::cout << "xyz1: " << xyz1.to_array() << "\n";
-            double d0 = delta_E76_xyz(xyzw.color, xyz1) * xyzw.weight;
-            d += d0 * d0;
+            double d0 = delta_E76_xyz(xyzw.color, xyz1);
+            double d1 = d0 * xyzw.weight;
+            d += d1 * d1;
+            if (print) {
+                std::cerr << xyz_to_srgb(xyzw.color).to_array() << " --> "
+                          << xyz_to_srgb(xyz1).to_array() << ": " << d0 << ", " << d1 << "\n";
+            }
         }
         return d;
     }
@@ -435,9 +478,9 @@ public:
     void make_couplers(const ParamVec& q)
     {
         // Overall number of params is B + G * L * 3 = 48
-        const int B = 8; // Number of params not accounting gaussians
-        const int G = 4; // Number of gaussians (3 params each) in each (of 3) layer
-        const int L = 3; // Number of layers
+        const int B = N_FREE_PARAMS; // Number of params not accounting gaussians
+        const int G = N_GAUSSIANS; // Number of gaussians (3 params each) in each (of 3) layer
+        const int L = N_COUPLED_LAYERS; // Number of layers
         m_couplers[0] = zeros<31>();
         m_couplers[1] = zeros<31>();
         m_couplers[2] = zeros<31>();
@@ -457,27 +500,41 @@ public:
 
     Array2D<3, 31> develop_film(const Array<3>& H, const ParamVec& q)
     {
+        float ymax = 4;
         Array<3> dev = {{
-            zigzag(H[0], q[0], 1.0),
-            zigzag(H[1], q[1], 1.0),
-            zigzag(H[2], q[2], 1.0)
+            /*
+            zigzag1(H[0], 0, ymax, q[0], q[1]),
+            zigzag1(H[1], 0, ymax, q[2], q[3]),
+            zigzag1(H[2], 0, ymax, q[4], q[5])
+            */
+            zigzag_to(H[0], 0, ymax, q[0], 0),
+            zigzag_to(H[1], 0, ymax, q[1], 0),
+            zigzag_to(H[2], 0, ymax, q[2], 0)
         }};
         //std::cout << "dev: " << dev << "\n";
         //std::cout << "dyes: " << m_film_max_dyes << "\n";
         Array2D<3, 31> developed_dyes = dev * m_film_max_dyes;
-        Array2D<3, 31> developed_couplers = (1 - dev) * m_couplers;
+        Array<3> cDev = {{
+            1 - dev[0] / ymax,
+            1 - dev[1] / ymax,
+            1 - dev[2] / ymax
+        }};
+        //auto m = Array<3>{{q[1], q[5], q[9]}};
+        //Array2D<3, 31> developed_couplers = (m - dev) / m * m_couplers;
+        Array2D<3, 31> developed_couplers = cDev * m_couplers;
         return developed_dyes + developed_couplers;
     }
 
     Array2D<3, 31> develop_paper(const Array2D<3, 31>& negative, const ParamVec& q)
     {
+        float ymax = 4;
         Array<31> trans = transmittance(negative, ones<3>());
         //std::cout << "trans: " << trans << "\n";
         Array<31> sp = trans * m_proj_light;
         //std::cout << "sp1: " << sp << "\n";
 
         // log10(10^paper_sense % sp)
-        Array<3> H1 = apply(log10, (apply(pow, 10, ~(~m_paper_sense + subarray<N_PARAMS, 3, 3>(q))) % sp)) * m_paper_gammas;
+        Array<3> H1 = apply(log10, (apply(pow, 10, ~(~m_paper_sense + /*q[N_FREE_PARAMS - 2]*/subarray<N_PARAMS, 6, 3>(q))) % sp)); // * m_paper_gammas;
         //H1[1] += q[3];
         //H1[2] += q[4];
         //std::cout << "H1: " << H1 << "\n";
@@ -486,21 +543,31 @@ public:
         H1[1] = zigzag_p(H1[1], m_paper_gammas[1], 4);
         H1[2] = zigzag_p(H1[2], m_paper_gammas[2], 4);
         */
-        return (H1 + q[6]) * m_paper_dyes;
+        Array<3> dev = {{
+            /*
+            zigzag1(H1[0], 0, ymax, q[6],  q[7]),
+            zigzag1(H1[1], 0, ymax, q[8],  q[9]),
+            zigzag1(H1[2], 0, ymax, q[10], q[11])
+            */
+            zigzag_from(H1[0], 0, ymax, 5, 0),
+            zigzag_from(H1[1], 0, ymax, 5, 0),
+            zigzag_from(H1[2], 0, ymax, 5, 0)
+        }};
+        return dev * m_paper_dyes;
     }
 
     Color develop(const Color& xyz, const ParamVec& q)
     {
         Array<31> sp = m_refl_gen.spectrum_of(xyz);
         //std::cout << "sp: " << sp << "\n";
-        Array<3> H = apply(log10, exposure(m_film_sense, sp));
+        Array<3> H = apply(log10, exposure(~(~m_film_sense + subarray<N_PARAMS, 3, 3>(q)), sp));
         //std::cout << "H: " << H << "\n";
         auto negative = develop_film(H, q);
         //std::cout << "negative: " << negative << "\n";
         auto positive = develop_paper(negative, q);
         //std::cout << "positive: " << positive << "\n";
         auto trans = transmittance(positive, ones<3>());
-        Array<3> z = (m_mtx_refl % trans) * q[7];
+        Array<3> z = m_mtx_refl % trans * q[N_FREE_PARAMS - 1];
         //std::cout << "\n";
         return Color(z[0], z[1], z[2]);
     }
@@ -533,7 +600,7 @@ private:
     Array<31> m_proj_light = daylight_spectrum(5500);
     Array<31> m_refl_light = daylight_spectrum(6500);
 
-    double m_max_density = 2.0;
+    double m_max_density = 1.0;
     Array<3> m_paper_gammas = {{ 2.0, 2.0, 2.0 }};
     Array2D<3, 31> m_film_sense;
     Array2D<3, 31> m_film_dyes;
@@ -546,7 +613,6 @@ private:
     Array2D<3, 31> m_couplers;
     std::vector<ColorW> m_xyzs = reference_colors();
 
-    ParamVec m_solution;
 };
 
 double couplers_opt_func(unsigned n, const double * x,
@@ -562,6 +628,7 @@ double couplers_opt_func(unsigned n, const double * x,
     if (r1 < r) {
         r = r1;
         std::cerr << i << ": " << r1 << "; params: " << q << "\n";
+        opt->m_solution = q;
     }
 
     return r1;
@@ -572,6 +639,7 @@ int main()
     Optimizer opt;
     opt.opt();
     std::cout << opt.to_json() << "\n";
+    opt.opt_fun(opt.m_solution, true);
     /*
     double opt_x[] = {0.5, 0.5, 0.5,
                         1, 500, 100,

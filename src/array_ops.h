@@ -307,6 +307,30 @@ Array2D<M, N> operator~(const Array2D<N, M>& a)
 }
 
 template<size_t N, size_t M>
+Array2D<N, M> operator+(const Array2D<N, M>& a1, float d)
+{
+    Array2D<N, M> a;
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < M; j++) {
+            a[i][j] = a1[i][j] + d;
+        }
+    }
+    return a;
+}
+
+template<size_t N, size_t M>
+Array2D<N, M> operator+(float d, const Array2D<N, M>& a1)
+{
+    Array2D<N, M> a;
+    for (int i = 0; i < N; i++) {
+        for (int j = 0; j < M; j++) {
+            a[i][j] = a1[i][j] + d;
+        }
+    }
+    return a;
+}
+
+template<size_t N, size_t M>
 Array2D<N, M> operator+(const Array2D<N, M>& a1, const Array2D<N, M>& a2)
 {
     Array2D<N, M> a;
