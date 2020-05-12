@@ -41,6 +41,20 @@ Array<31> cv65to31(const Array<65>& a1)
 
 void from_json(const json& j, Datasheet& ds)
 {
+    if (j.count("samples")) {
+        int samples = 0;
+        j.at("samples").get_to(samples);
+        if (samples == 31) {
+            j.at("red").at("sense").get_to(ds.sense[0]);
+            j.at("green").at("sense").get_to(ds.sense[1]);
+            j.at("blue").at("sense").get_to(ds.sense[2]);
+
+            j.at("red").at("dye").at("data").get_to(ds.dyes[0]);
+            j.at("green").at("dye").at("data").get_to(ds.dyes[1]);
+            j.at("blue").at("dye").at("data").get_to(ds.dyes[2]);
+            return;
+        }
+    }
     Array<65> a;
     j.at("red").at("sense").get_to(a);
     ds.sense[0] = cv65to31(a);

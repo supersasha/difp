@@ -293,9 +293,9 @@ __kernel void process_photo(
             zzz.z += pd->mtx_refl[2][i] * refl;
         }
 
-        exposure.x += pow(10, pd->film_sense[0][i] - 4.149f - opts->color_corr[0]) * sp;
-        exposure.y += pow(10, pd->film_sense[1][i] - 5.997f - opts->color_corr[1]) * sp;
-        exposure.z += pow(10, pd->film_sense[2][i] - 1.309f - opts->color_corr[2]) * sp;
+        exposure.x += pow(10, pd->film_sense[0][i]/* - opts->color_corr[0]*/) * sp;
+        exposure.y += pow(10, pd->film_sense[1][i]/* - opts->color_corr[1]*/) * sp;
+        exposure.z += pow(10, pd->film_sense[2][i]/* - opts->color_corr[2]*/) * sp;
     }
 
     if (opts->mode == GEN_SPECTR) {
@@ -321,14 +321,9 @@ __kernel void process_photo(
     }
 
     float4 dev = (float4) (
-            /*
-        sigma_to(H.x, 0, 1, pd->neg_gammas[0], opts->curve_smoo, 0),
-        sigma_to(H.y, 0, 1, pd->neg_gammas[1], opts->curve_smoo, 0),
-        sigma_to(H.z, 0, 1, pd->neg_gammas[2], opts->curve_smoo, 0),
-        */
-        sigma_to(H.x, 0, 4, 0.812f, /*opts->curve_smoo*/0.02f, 0),
-        sigma_to(H.y, 0, 4, 0.533f, /*opts->curve_smoo*/0.02f, 0),
-        sigma_to(H.z, 0, 4, 0.540f, /*opts->curve_smoo*/0.02f, 0),
+        sigma_to(H.x, 0, 2.5f, pd->neg_gammas[0], opts->curve_smoo, 0),
+        sigma_to(H.y, 0, 2.5f, pd->neg_gammas[1], opts->curve_smoo, 0),
+        sigma_to(H.z, 0, 2.5f, pd->neg_gammas[2], opts->curve_smoo, 0),
         0
     );
 
@@ -346,25 +341,25 @@ __kernel void process_photo(
                              + pd->film_dyes[1][i] * dev.y
                              + pd->film_dyes[2][i] * dev.z
                              ;
-        float developed_couplers = pd->couplers[0][i] * (1.0f - dev.x / 4.0f)
-                                 + pd->couplers[1][i] * (1.0f - dev.y / 4.0f)
-                                 + pd->couplers[2][i] * (1.0f - dev.z / 4.0f);
+        float developed_couplers = pd->couplers[0][i] * (1.0f - dev.x / 2.5f)
+                                 + pd->couplers[1][i] * (1.0f - dev.y / 2.5f)
+                                 + pd->couplers[2][i] * (1.0f - dev.z / 2.5f);
         float developed = developed_dyes + developed_couplers;
         float trans = pow(10, -developed);
         if (opts->mode == NEGATIVE) {
-            xyz1.x += pd->mtx_refl[0][i] * trans * 1000000;
-            xyz1.y += pd->mtx_refl[1][i] * trans * 1000000;
-            xyz1.z += pd->mtx_refl[2][i] * trans * 1000000;
+            xyz1.x += pd->mtx_refl[0][i] * trans;
+            xyz1.y += pd->mtx_refl[1][i] * trans;
+            xyz1.z += pd->mtx_refl[2][i] * trans;
         } else {
             float sp = trans * pd->proj_light[i];
-            exposure.x += pow(10, pd->paper_sense[0][i] - 0.995f) * sp;
-            exposure.y += pow(10, pd->paper_sense[1][i] - 0.373f) * sp;
-            exposure.z += pow(10, pd->paper_sense[2][i] + 1.420f) * sp;
+            exposure.x += pow(10, pd->paper_sense[0][i] - opts->color_corr[0]) * sp;
+            exposure.y += pow(10, pd->paper_sense[1][i] - opts->color_corr[1]) * sp;
+            exposure.z += pow(10, pd->paper_sense[2][i] - opts->color_corr[2]) * sp;
         }
     }
     
     if (opts->mode == PAPER_EXPOSURE) {
-        out_img[out_idx] = exposure * pow(10, opts->paper_exposure) / 500;
+        out_img[out_idx] = exposure * pow(10, opts->paper_exposure);
         return;
     }
     
@@ -383,7 +378,7 @@ __kernel void process_photo(
 
         // Viewing paper
         for (int i = 0; i < SPECTRUM_SIZE; i++) {
-#define SIGMA 4
+#define SIGMA 6
 #if SIGMA == 0
             float r = H.x * pd->paper_gammas[0] * opts->paper_contrast;
             float g = H.y * pd->paper_gammas[1] * opts->paper_contrast;
@@ -411,11 +406,19 @@ __kernel void process_photo(
             float r = sigma_from(H.x, 0, 4, 5.0f * opts->paper_contrast, opts->curve_smoo, 0);
             float g = sigma_from(H.y, 0, 4, 5.0f * opts->paper_contrast, opts->curve_smoo, 0);
             float b = sigma_from(H.z, 0, 4, 5.0f * opts->paper_contrast, opts->curve_smoo, 0);
+#elif SIGMA == 5
+            float r = sigma_to(H.x, 0.0f, 4, pd->paper_gammas[0] * opts->paper_contrast, opts->curve_smoo, 0); //-4/pd->paper_gammas[0]);
+            float g = sigma_to(H.y, 0.0f, 4, pd->paper_gammas[1] * opts->paper_contrast, opts->curve_smoo, 0); //-4/pd->paper_gammas[1]);
+            float b = sigma_to(H.z, 0.0f, 4, pd->paper_gammas[2] * opts->paper_contrast, opts->curve_smoo, 0); //-4/pd->paper_gammas[2]);
+#elif SIGMA == 6
+            float r = sigma_to(H.x, 0.0f, 4, pd->paper_gammas[0] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[0]);
+            float g = sigma_to(H.y, 0.0f, 4, pd->paper_gammas[1] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[1]);
+            float b = sigma_to(H.z, 0.0f, 4, pd->paper_gammas[2] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[2]);
 #endif
             float developed = pd->paper_dyes[0][i] * r
                             + pd->paper_dyes[1][i] * g
                             + pd->paper_dyes[2][i] * b;
-            float trans = pow(10, -developed /* * opts->paper_contrast*/);
+            float trans = pow(10, -developed * 1.0f);
             xyz1.x += pd->mtx_refl[0][i] * trans;
             xyz1.y += pd->mtx_refl[1][i] * trans;
             xyz1.z += pd->mtx_refl[2][i] * trans;
@@ -423,7 +426,7 @@ __kernel void process_photo(
     }
     
     // Setting output color sRGB
-    float4 c = xyz_to_srgb_scalar(xyz1 * 0.966f);
+    float4 c = xyz_to_srgb_scalar(xyz1 * 1.0f);
     out_img[out_idx] = c;
 }
 

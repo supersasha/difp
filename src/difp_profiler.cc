@@ -246,33 +246,6 @@ std::vector<float> linspace(float start, float end, int n)
 std::vector<ColorW> reference_colors()
 {
     std::vector<ColorW> res;
-    /*
-    res.emplace_back(ColorW{srgb_to_xyz(Color(1, 0, 0)), 1});
-    res.emplace_back(ColorW{srgb_to_xyz(Color(0, 1, 0)), 1});
-    res.emplace_back(ColorW{srgb_to_xyz(Color(0, 0, 1)), 1});
-    res.emplace_back(ColorW{srgb_to_xyz(Color(1, 1, 1)), 1});
-    */
-    /*
-    auto vs = linspace(0.1, 1, 5);
-    for (const auto v: vs) {
-        res.emplace_back(ColorW{srgb_to_xyz(Color(v, 0, 0)), 1 + v*4});
-        res.emplace_back(ColorW{srgb_to_xyz(Color(0, v, 0)), 1});
-        res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, 0)), 1});
-        res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, v)), 2});
-        
-        res.emplace_back(ColorW{srgb_to_xyz(Color(v, 0, 0.3 * v)), 1});
-
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(v, 0, 0)), v*4});
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(0, v, 0)), 1});
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(0, 0, v)), 1});
-        //
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(0, v, v)), v});
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(v, 0, v)), v});
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, 0)), v});
-        //
-        //res.emplace_back(ColorW{srgb_to_xyz(Color(v, v, v)), 2});
-    }
-    */
     auto vs = linspace(0.1, 1, 5);
     for (int i = 0; i < vs.size(); i++) {
         auto v = vs[i];
@@ -318,11 +291,12 @@ double couplers_opt_func(unsigned n, const double * x,
 class Optimizer
 {
 public:
-    static constexpr int N_FREE_PARAMS = 10;
-    static constexpr int N_GAUSSIANS = 2;
-    static constexpr int N_COUPLED_LAYERS = 0;
-    static constexpr int N_GAUSSIAN_PARAMS = 3 * N_COUPLED_LAYERS * N_GAUSSIANS;
-    static constexpr int N_PARAMS = N_FREE_PARAMS + N_GAUSSIAN_PARAMS;
+    static const int N_FREE_PARAMS = 9;
+    //static constexpr int N_COUPLED_LAYERS = 3;
+    static constexpr std::array<int, 4> GAUSSIAN_LAYERS = {{0, 1, 1, 2}};
+    static const int N_GAUSSIANS = GAUSSIAN_LAYERS.size();
+    static const int N_GAUSSIAN_PARAMS = 3 * N_GAUSSIANS;
+    static const int N_PARAMS = N_FREE_PARAMS + N_GAUSSIAN_PARAMS;
     using ParamVec = Array<N_PARAMS>;
     ParamVec m_solution;
 
@@ -330,10 +304,10 @@ public:
     {
         std::string film_ds_file =
             //"profiles/datasheets/kodak-vision-250d-5207.datasheet";
-            "profiles/datasheets/kodak-vision3-250d-5207.datasheet";
+            "profiles/datasheets/kodak-vision3-250d-5207-2.datasheet";
         std::string paper_ds_file =
             //"profiles/datasheets/kodak-endura.datasheet";
-            "profiles/datasheets/kodak-vision-color-print-2383.datasheet";
+            "profiles/datasheets/kodak-vision-color-print-2383-2.datasheet";
         std::string spectrum_file =
             "research/profile/wthanson/spectra2/spectrum-d55-4.json";
 
@@ -351,10 +325,13 @@ public:
         m_film_max_dyes = ~(~m_film_dyes * m_film_max_qs);
 
         m_paper_dyes = normalized_dyes(m_paperds.dyes, m_refl_light, 1.0);
+        /*
         Array<31> neg_white = transmittance(m_film_max_dyes, ones<3>()) * m_proj_light;
         std::cerr << "neg_white: " << (m_mtx_refl % (neg_white / m_proj_light)) << "\n";
         std::cerr << "neg_white: " << neg_white << "\n";
         m_paper_sense = normalized_sense(m_paperds.sense, neg_white);
+        */
+        m_paper_sense = normalized_sense(m_paperds.sense, m_proj_light);
     }
 
     void opt()
@@ -373,82 +350,47 @@ public:
             0, 0, 0,
 
             // paper
-            //0, 0, 0,
+            0, 0, 0,
 
             -6, -6, -6,
-            -6, -6, -6,
-            //0,
-
-            0.1,
                         
-            /*
-            0.0001, 350, 20,
-            0.0001, 350, 20,
-            0.0001, 350, 20,
-            0.0001, 350, 20,
-            0.0001, 350, 20,
-            0.0001, 350, 20,
-            */
+            0, 350, 20,
+            //0, 350, 20,
+            0, 350, 20,
+            0, 600, 20,
+            0, 500, 20,
+            //0, 500, 20,
         };
         double ub[N_PARAMS] = {
-            3, 1, 1,
-            //5, 5, 5,
+            1, 1, 1,
+            7, 7, 7,
 
             6, 6, 6,
-            6, 6, 6,
-            //6,
 
-            10,
-
-            /*
-            1, 750, 50,
-            1, 750, 50,
-            1, 750, 50,
-            1, 750, 50,
-            1, 750, 50,
-            1, 750, 50,
-            */
+            1, 600, 60,
+            //3, 600, 100,
+            1, 500, 60,
+            1, 750, 60,
+            1, 750, 60,
+            //3, 750, 100,
         };
         double opt_x[N_PARAMS] = {
             0.5, 0.5, 0.5,
-            //1, 1, 1,
+            1, 1, 1,
 
             0, 0, 0,
-            0, 0, 0,
-            //0,
 
-            1,
-
-            /*
             0.5, 500, 30,
-            0.5, 500, 30,
-            0.5, 500, 30,
-            0.5, 500, 30,
-            0.5, 500, 30,
-            0.5, 500, 30,
-            */
+            //0.5, 500, 30,
+            0.5, 450, 30,
+            0.5, 650, 30,
+            0.5, 550, 30,
+            //0.5, 550, 30,
         };
         nlopt_set_lower_bounds(opt, lb);
         nlopt_set_upper_bounds(opt, ub);
-        nlopt_set_maxtime(opt, 60 * 30);
-        /*
-        double opt_x[] = {0.5, 0.5, 0.5,
-                            0, 0, 0,
-                            0.5, 10,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                            0.5, 500, 100,
-                        };
-        */
+        nlopt_set_maxtime(opt, 60 * 10);
+
         double opt_f = 0;
         auto r = nlopt_optimize(opt, opt_x, &opt_f);
         std::cerr << "r: " << r << "; f: " << opt_f << "\n";
@@ -480,19 +422,15 @@ public:
         // Overall number of params is B + G * L * 3 = 48
         const int B = N_FREE_PARAMS; // Number of params not accounting gaussians
         const int G = N_GAUSSIANS; // Number of gaussians (3 params each) in each (of 3) layer
-        const int L = N_COUPLED_LAYERS; // Number of layers
+        //const int L = layers.size(); //N_COUPLED_LAYERS; // Number of layers
         m_couplers[0] = zeros<31>();
         m_couplers[1] = zeros<31>();
         m_couplers[2] = zeros<31>();
-        for (int i = 0; i < L; i++) {
-            double b = B + G * i * 3;
+        for (int i = 0; i < G; i++) {
+            double b = B + i * 3;
             double x = 400;
             for (int j = 0; j < 31; j++, x += 10) {
-                m_couplers[i][j] = 0;
-                for (int k = 0; k < G; k++) {
-                    double s = b + k * 3;
-                    m_couplers[i][j] += bell(q[s], q[s+1], q[s+2], x);
-                }
+                m_couplers[GAUSSIAN_LAYERS[i]][j] += bell(q[b], q[b+1], q[b+2], x);
             }
         }
         //std::cout << "couplers: " << m_couplers << "\n";
@@ -500,13 +438,8 @@ public:
 
     Array2D<3, 31> develop_film(const Array<3>& H, const ParamVec& q)
     {
-        float ymax = 4;
+        float ymax = 2.5;
         Array<3> dev = {{
-            /*
-            zigzag1(H[0], 0, ymax, q[0], q[1]),
-            zigzag1(H[1], 0, ymax, q[2], q[3]),
-            zigzag1(H[2], 0, ymax, q[4], q[5])
-            */
             zigzag_to(H[0], 0, ymax, q[0], 0),
             zigzag_to(H[1], 0, ymax, q[1], 0),
             zigzag_to(H[2], 0, ymax, q[2], 0)
@@ -520,7 +453,6 @@ public:
             1 - dev[2] / ymax
         }};
         //auto m = Array<3>{{q[1], q[5], q[9]}};
-        //Array2D<3, 31> developed_couplers = (m - dev) / m * m_couplers;
         Array2D<3, 31> developed_couplers = cDev * m_couplers;
         return developed_dyes + developed_couplers;
     }
@@ -534,24 +466,11 @@ public:
         //std::cout << "sp1: " << sp << "\n";
 
         // log10(10^paper_sense % sp)
-        Array<3> H1 = apply(log10, (apply(pow, 10, ~(~m_paper_sense + /*q[N_FREE_PARAMS - 2]*/subarray<N_PARAMS, 6, 3>(q))) % sp)); // * m_paper_gammas;
-        //H1[1] += q[3];
-        //H1[2] += q[4];
-        //std::cout << "H1: " << H1 << "\n";
-        /*
-        H1[0] = zigzag_p(H1[0], m_paper_gammas[0], 4);
-        H1[1] = zigzag_p(H1[1], m_paper_gammas[1], 4);
-        H1[2] = zigzag_p(H1[2], m_paper_gammas[2], 4);
-        */
+        Array<3> H1 = apply(log10, (apply(pow, 10, ~(~m_paper_sense + subarray<N_PARAMS, 6, 3>(q))) % sp));
         Array<3> dev = {{
-            /*
-            zigzag1(H1[0], 0, ymax, q[6],  q[7]),
-            zigzag1(H1[1], 0, ymax, q[8],  q[9]),
-            zigzag1(H1[2], 0, ymax, q[10], q[11])
-            */
-            zigzag_from(H1[0], 0, ymax, 5, 0),
-            zigzag_from(H1[1], 0, ymax, 5, 0),
-            zigzag_from(H1[2], 0, ymax, 5, 0)
+            zigzag_to(H1[0], 0, ymax, q[3], 0),
+            zigzag_to(H1[1], 0, ymax, q[4], 0),
+            zigzag_to(H1[2], 0, ymax, q[5], 0)
         }};
         return dev * m_paper_dyes;
     }
@@ -560,14 +479,14 @@ public:
     {
         Array<31> sp = m_refl_gen.spectrum_of(xyz);
         //std::cout << "sp: " << sp << "\n";
-        Array<3> H = apply(log10, exposure(~(~m_film_sense + subarray<N_PARAMS, 3, 3>(q)), sp));
+        Array<3> H = apply(log10, exposure(m_film_sense, sp));
         //std::cout << "H: " << H << "\n";
         auto negative = develop_film(H, q);
         //std::cout << "negative: " << negative << "\n";
         auto positive = develop_paper(negative, q);
         //std::cout << "positive: " << positive << "\n";
         auto trans = transmittance(positive, ones<3>());
-        Array<3> z = m_mtx_refl % trans * q[N_FREE_PARAMS - 1];
+        Array<3> z = m_mtx_refl % trans;
         //std::cout << "\n";
         return Color(z[0], z[1], z[2]);
     }
@@ -578,14 +497,14 @@ public:
         json j;
         j["film_sense"] = m_film_sense;
         j["film_dyes"] = m_film_max_dyes;
-        j["paper_sense"] = m_paper_sense;
+        j["paper_sense"] = subarray<N_PARAMS, 6, 3>(m_solution) + m_paper_sense;
         j["paper_dyes"] = m_paper_dyes;
         j["couplers"] = m_couplers;
         j["proj_light"] = m_proj_light;
         j["dev_light"] = m_dev_light;
         j["mtx_refl"] = m_mtx_refl;
-        j["neg_gammas"] = Array<3> {{ m_solution[0], m_solution[1], m_solution[2] }};
-        j["paper_gammas"] = m_paper_gammas;
+        j["neg_gammas"] = subarray<N_PARAMS, 0, 3>(m_solution);
+        j["paper_gammas"] = subarray<N_PARAMS, 3, 3>(m_solution); //m_paper_gammas;
         j["film_max_qs"] = m_film_max_qs;
         return j.dump(4);
     }
@@ -601,7 +520,7 @@ private:
     Array<31> m_refl_light = daylight_spectrum(6500);
 
     double m_max_density = 1.0;
-    Array<3> m_paper_gammas = {{ 2.0, 2.0, 2.0 }};
+    //Array<3> m_paper_gammas = {{ 2.0, 2.0, 2.0 }};
     Array2D<3, 31> m_film_sense;
     Array2D<3, 31> m_film_dyes;
     Array<3> m_film_max_qs;
@@ -614,6 +533,8 @@ private:
     std::vector<ColorW> m_xyzs = reference_colors();
 
 };
+
+constexpr std::array<int, 4> Optimizer::GAUSSIAN_LAYERS;
 
 double couplers_opt_func(unsigned n, const double * x,
         double * gr, void * func_data)

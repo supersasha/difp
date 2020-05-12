@@ -347,8 +347,18 @@ Array2D<N, M> operator+(const Array2D<N, M>& m, const Array<M>& v)
 {
     Array2D<N, M> a;
     for (int i = 0; i < N; i++) {
+        a[i] = m[i] + v;
+    }
+    return a;
+}
+
+template<size_t N, size_t M>
+Array2D<N, M> operator+(const Array<N>& v, const Array2D<N, M>& m)
+{
+    Array2D<N, M> a;
+    for (int i = 0; i < N; i++) {
         for (int j = 0; j < M; j++) {
-            a[i] = m[i] + v;
+            a[i] = m[i] + v[i];
         }
     }
     return a;
