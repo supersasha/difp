@@ -43,9 +43,24 @@ float4 xyz_to_srgb_scalar(float4 c)
     float y = c.y / 100.0f;
     float z = c.z / 100.0f;
 
+    // D65
     float r = x *  3.2406f + y * -1.5372f + z * -0.4986f;
     float g = x * -0.9689f + y *  1.8758f + z *  0.0415f;
     float b = x *  0.0557f + y * -0.2040f + z *  1.0570f;
+
+    // D55
+    /*
+    float r = x * 2.93537622  + y * -1.39242205 + z * -0.45159634;
+    float g = x * -0.98211899 + y * 1.90088771  + z *  0.04210707;
+    float b = x * 0.06757551  + y * -0.24777685 + z *  1.2839346; 
+    */
+
+    // D50
+    /*
+    float r =  x * 3.1338561 - y * 1.6168667 - z * 0.4906146;
+    float g = -x * 0.9787684 + y * 1.9161415 + z * 0.0334540;
+    float b =  x * 0.0719453 - y * 0.2289914 + z * 1.4052427;
+    */
 
     if(r > 0.0031308f)
         r = 1.055f * native_powr(r, 1.0f / 2.4f) - 0.055f;
@@ -260,6 +275,16 @@ __kernel void process_photo(
     int idx = (out_row - fr_vert) * (width - 2 * fr_horz) + (out_col - fr_horz); 
     float4 xyz = img[idx] * 100;
 
+    /*
+    float gm = 1.5f;
+    float x0 = 100 * (1 - 1/gm);
+    if (xyz[1] < x0) {
+        xyz = 0;
+    } else {
+        xyz = gm * (xyz - (float4)(x0, x0, x0, 0));
+    }
+    */
+
     if (opts->mode == IDENTITY) {
         out_img[out_idx] = xyz_to_srgb_scalar(xyz * pow(10, opts->film_exposure));
         return;
@@ -285,7 +310,7 @@ __kernel void process_photo(
         } else if (refl > 1) {
             refl = 1;
         }
-        float sp = refl * pd->dev_light[i]; //sd->light[i];
+        float sp = refl * 1.0f * pd->dev_light[i]; //sd->light[i];
         
         if (opts->mode == GEN_SPECTR) {
             zzz.x += pd->mtx_refl[0][i] * refl;
@@ -321,9 +346,9 @@ __kernel void process_photo(
     }
 
     float4 dev = (float4) (
-        sigma_to(H.x, 0, 2.5f, pd->neg_gammas[0], opts->curve_smoo, 0),
-        sigma_to(H.y, 0, 2.5f, pd->neg_gammas[1], opts->curve_smoo, 0),
-        sigma_to(H.z, 0, 2.5f, pd->neg_gammas[2], opts->curve_smoo, 0),
+        sigma_to(H.x, 0.0f, 2.5f, pd->neg_gammas[0], opts->curve_smoo, 0),
+        sigma_to(H.y, 0.0f, 2.5f, pd->neg_gammas[1], opts->curve_smoo, 0),
+        sigma_to(H.z, 0.0f, 2.5f, pd->neg_gammas[2], opts->curve_smoo, 0),
         0
     );
 
@@ -352,9 +377,9 @@ __kernel void process_photo(
             xyz1.z += pd->mtx_refl[2][i] * trans;
         } else {
             float sp = trans * pd->proj_light[i];
-            exposure.x += pow(10, pd->paper_sense[0][i] - opts->color_corr[0]) * sp;
-            exposure.y += pow(10, pd->paper_sense[1][i] - opts->color_corr[1]) * sp;
-            exposure.z += pow(10, pd->paper_sense[2][i] - opts->color_corr[2]) * sp;
+            exposure.x += pow(10, pd->paper_sense[0][i] + opts->color_corr[0]) * sp;
+            exposure.y += pow(10, pd->paper_sense[1][i] + opts->color_corr[1]) * sp;
+            exposure.z += pow(10, pd->paper_sense[2][i] + opts->color_corr[2]) * sp;
         }
     }
     
@@ -411,9 +436,9 @@ __kernel void process_photo(
             float g = sigma_to(H.y, 0.0f, 4, pd->paper_gammas[1] * opts->paper_contrast, opts->curve_smoo, 0); //-4/pd->paper_gammas[1]);
             float b = sigma_to(H.z, 0.0f, 4, pd->paper_gammas[2] * opts->paper_contrast, opts->curve_smoo, 0); //-4/pd->paper_gammas[2]);
 #elif SIGMA == 6
-            float r = sigma_to(H.x, 0.0f, 4, pd->paper_gammas[0] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[0]);
-            float g = sigma_to(H.y, 0.0f, 4, pd->paper_gammas[1] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[1]);
-            float b = sigma_to(H.z, 0.0f, 4, pd->paper_gammas[2] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[2]);
+            float r = sigma_to(H.x, 0.05f, 4, pd->paper_gammas[0] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[0]);
+            float g = sigma_to(H.y, 0.05f, 4, pd->paper_gammas[1] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[1]);
+            float b = sigma_to(H.z, 0.05f, 4, pd->paper_gammas[2] * opts->paper_contrast, opts->curve_smoo, pd->film_max_qs[2]);
 #endif
             float developed = pd->paper_dyes[0][i] * r
                             + pd->paper_dyes[1][i] * g

@@ -111,6 +111,11 @@ class Spectrum:
         b = extract_basis(d1)
         self.base = SpectralBasis(self.light, b)
         return d1
+    
+    def unclipped_spectrum_of(self, xyz):
+        refl = self.base.reflectance_of(xyz)
+        sp = refl * self.light
+        return sp, refl
 
     def spectrum_of(self, xyz):
         refl = self.base.reflectance_of(xyz)

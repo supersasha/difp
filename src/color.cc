@@ -116,10 +116,18 @@ Color xyz_to_srgb(const Color& c)
     float x = c.c[0] / 100.0f;
     float y = c.c[1] / 100.0f;
     float z = c.c[2] / 100.0f;
-
+    
+    // D65
     float r = x *  3.2406f + y * -1.5372f + z * -0.4986f;
     float g = x * -0.9689f + y *  1.8758f + z *  0.0415f;
     float b = x *  0.0557f + y * -0.2040f + z *  1.0570f;
+    
+    // D55
+    /*
+    float r = x * 2.93537622  + y * -1.39242205 + z * -0.45159634;
+    float g = x * -0.98211899 + y * 1.90088771  + z *  0.04210707;
+    float b = x * 0.06757551  + y * -0.24777685 + z *  1.2839346; 
+    */
 
     if(r > 0.0031308f)
         r = 1.055f * pow(r, 1.0f / 2.4f) - 0.055f;
@@ -213,6 +221,16 @@ Color xyz_to_lab(const Color& c)
     return Color(116.0 * y - 16.0, 500.0 * (x - y), 200.0 * (y - z));
 }
 
+Color lab_to_lch(const Color& c)
+{
+    return Color(c.c[0], hypot(c.c[1], c.c[2]), atan2(c.c[2], c.c[1]));
+}
+
+Color xyz_to_lch(const Color& c)
+{
+    return lab_to_lch(xyz_to_lab(c));
+}
+
 double delta_E76_lab(const Color& lab1, const Color& lab2)
 {
     // Minimum noticible distance is 2.3 (not actually truth)
@@ -223,6 +241,19 @@ double delta_E76_lab(const Color& lab1, const Color& lab2)
 double delta_E76_xyz(const Color& xyz1, const Color& xyz2)
 {
     return delta_E76_lab(xyz_to_lab(xyz1), xyz_to_lab(xyz2));
+}
+
+double delta_E94_xyz(const Color& xyz1, const Color& xyz2)
+{
+    Color lch1 = xyz_to_lch(xyz1);
+    Color lch2 = xyz_to_lch(xyz2);
+    double KL = 1;
+    double K1 = 0.045;
+    double K2 = 0.015;
+    double d1 = (lch2.c[0] - lch1.c[0]) / KL;
+    double d2 = (lch2.c[1] - lch1.c[1]) / (1 + K1*lch1.c[1]);
+    double d3 = (lch2.c[2] - lch1.c[2]) / (1 + K2*lch1.c[1]); // <- K2*lch1[1] !
+    return sqrt(d1*d1 + d2*d2 + d3*d3);
 }
 
 const Array<31> D_S0 = {{

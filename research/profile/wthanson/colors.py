@@ -2,6 +2,8 @@ import numpy as np
 import math
 import data
 
+import numpy.linalg
+
 def color(x, y, z):
     return np.array([x, y, z])
 
@@ -170,3 +172,19 @@ def spectral_color_xy(lam):
 
 def xyY_to_XYZ(x, y, Y):
     return color(x*Y/y, Y, (1-x-y)*Y/y)
+
+def rgb_matrix(R, G, B, W):
+    XYZ = np.array([
+        [R[0] / R[1], G[0] / G[1], B[0] / B[1]],
+        [1.0, 1.0, 1.0],
+        [(1-R[0]-R[1])/R[1], (1-G[0]-G[1])/G[1], (1-B[0]-B[1])/B[1]]
+    ])
+    XYZinv = numpy.linalg.inv(XYZ)
+    S = XYZinv @ W
+    fromRGB = XYZ @ np.diag(S)
+    toRGB = numpy.linalg.inv(fromRGB)
+    print(fromRGB)
+    print(toRGB)
+
+
+

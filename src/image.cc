@@ -12,6 +12,7 @@ Image load_image_from_raw_file(const std::string& filename)
     raw.imgdata.params.user_qual = 3;
     raw.imgdata.params.highlight = 0;
     raw.imgdata.params.no_auto_bright = 1;
+    //raw.imgdata.params.no_auto_scale = 1; //
     //raw.imgdata.params.fbdd_noiserd = 2;
     raw.imgdata.params.threshold = 100;
     

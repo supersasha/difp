@@ -32,5 +32,6 @@ Color srgb_to_xyz(const Color& c);
 Color xyz_to_lab(const Color& c);
 double delta_E76_lab(const Color&, const Color&);
 double delta_E76_xyz(const Color&, const Color&);
+double delta_E94_xyz(const Color&, const Color&);
 
 Array<31> daylight_spectrum(double temp);

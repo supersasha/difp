@@ -493,6 +493,9 @@ def cmd_analyze(opts):
     plt.plot(xs, hanson.couplers[0], 'r')
     plt.plot(xs, hanson.couplers[1], 'g')
     plt.plot(xs, hanson.couplers[2], 'b')
+    plt.plot(xs, hanson.film_dyes[0]*hanson.film_max_qs[0], 'c')
+    plt.plot(xs, hanson.film_dyes[1]*hanson.film_max_qs[0], 'm')
+    plt.plot(xs, hanson.film_dyes[2]*hanson.film_max_qs[0], 'y')
     plt.show()
 
 def cmd_demo(opts):
