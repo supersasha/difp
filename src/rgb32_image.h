@@ -34,6 +34,7 @@ struct Rgb32Image
         rhs.width = 0;
         rhs.height = 0;
         rhs.data = nullptr;
+	return *this;
     }
 
     void resize(int w, int h)

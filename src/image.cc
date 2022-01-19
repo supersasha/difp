@@ -1,6 +1,6 @@
 #include "image.h"
 
-#include <libraw.h>
+#include <libraw/libraw.h>
 #include <iostream>
 #include <math.h>
 
@@ -45,6 +45,12 @@ Image load_image_from_raw_file(const std::string& filename)
     int srcRedOffset = 0;
     int srcGreenOffset = (mi->bits / 8);
     int srcBlueOffset = 2 * (mi->bits / 8);
+
+    std::cout << "Pixel size: " << srcPixelSize << "\n";
+    std::cout << "Red offset: " << srcRedOffset << "\n";
+    std::cout << "Green offset: " << srcGreenOffset << "\n";
+    std::cout << "Blue offset: " << srcBlueOffset << "\n";
+    
     float q = 1.0 / ((1 << mi->bits) - 1);
 
     for (int row = 0; row < mi->height; row++) {

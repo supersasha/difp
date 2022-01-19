@@ -77,8 +77,8 @@ int runGui(GuiBuilder& builder)
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/ProggyTiny.ttf", 10.0f);
     //ImFont* font = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\ArialUni.ttf", 18.0f, NULL, io.Fonts->GetGlyphRangesJapanese());
     //IM_ASSERT(font != NULL);
-    io.Fonts->AddFontFromFileTTF("/home/supersasha/.local/share/fonts/PT Mono_Regular.ttf", 16.0f, NULL, io.Fonts->GetGlyphRangesCyrillic());
-
+    //io.Fonts->AddFontFromFileTTF("/home/supersasha/.local/share/fonts/PT Mono_Regular.ttf", 16.0f, NULL, io.Fonts->GetGlyphRangesCyrillic());
+    io.Fonts->AddFontFromFileTTF("/usr/share/fonts/truetype/freefont/FreeMono.ttf", 16.0f, NULL, io.Fonts->GetGlyphRangesCyrillic());
     // Main loop
     while (!glfwWindowShouldClose(window))
     {

@@ -163,11 +163,11 @@ struct UserOptions
  * Helpers
  */
 
-__constant int NUM_SECTORS = 6;
-__constant int NUM_BASES = NUM_SECTORS + 1;
-__constant float BLUE_CHROMA_SEPARATION = 0.16f;
-__constant int SPECTRUM_SIZE = 31;
-__constant float MIN_REFLECTION = 1.0e-15f;
+const int NUM_SECTORS = 6;
+const int NUM_BASES = NUM_SECTORS + 1;
+const float BLUE_CHROMA_SEPARATION = 0.16f;
+const int SPECTRUM_SIZE = 31;
+const float MIN_REFLECTION = 1.0e-15f;
 
 float sigma_old(float x, float _min, float _max, float gamma, float bias, float smoo)
 {

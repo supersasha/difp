@@ -18,7 +18,7 @@ CLDriver::CLDriver(const std::string& filename)
             std::cout<< all_platforms[i].getInfo<CL_PLATFORM_VERSION>()<<"\n";
     }
     
-    cl::Platform default_platform=all_platforms[0];
+    cl::Platform default_platform=all_platforms[1];
     std::cout << "Using platform: " <<
         default_platform.getInfo<CL_PLATFORM_VERSION>()<<"\n";
 

@@ -1,7 +1,7 @@
 #include "data.h"
 
 #include <fstream>
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
 void from_json(const json& j, SpectrumData& sd)

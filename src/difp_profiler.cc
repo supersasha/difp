@@ -4,12 +4,20 @@
 #include <math.h>
 
 #include <nlopt.h>
-#include <json.hpp>
+#include <nlohmann/json.hpp>
 using json = nlohmann::json;
 
 #include "data.h"
 #include "array_ops.h"
 #include "color.h"
+
+inline float _pow(float a, float b) {
+    return pow(a, b);
+}
+
+inline float _log10(float a) {
+    return log10(a);
+}
 
 Array2D<3, 31> A_1931_64_400_700_10nm = transpose(Array2D<31, 3>({{
     { 0.0191097, 0.0020044, 0.0860109 },
@@ -45,6 +53,7 @@ Array2D<3, 31> A_1931_64_400_700_10nm = transpose(Array2D<31, 3>({{
     { 0.00957688, 0.00371774, 0 }
 }}));
 
+/*
 float zigzag(float x, float gamma, float ymax)
 {
     if (x >= 0) {
@@ -92,6 +101,7 @@ float zigzag_to(float x, float ymin, float ymax, float gamma, float bias)
     }
     return y;
 }
+*/
 
 float sigma(float x, float ymin, float ymax, float gamma, float bias, float smoo)
 {
@@ -100,6 +110,7 @@ float sigma(float x, float ymin, float ymax, float gamma, float bias, float smoo
     return a * (y / pow(1 + pow(fabs(y), 1/smoo), smoo) + 1) + ymin;
 }
 
+/*
 float sigma_from(float x, float ymin, float ymax, float gamma, float smoo, float x0)
 {
     float avg = (ymax + ymin) / 2;
@@ -109,6 +120,7 @@ float sigma_from(float x, float ymin, float ymax, float gamma, float smoo, float
     float bias = x0 - (ymin - avg) / gamma;
     return sigma(x, ymin, ymax, gamma, bias, smoo);
 }
+*/
 
 double bell(double a, double mu, double sigma, double x)
 {
@@ -118,14 +130,14 @@ double bell(double a, double mu, double sigma, double x)
 
 Array<3> exposure(const Array2D<3, 31>& logsense, const Array<31>& sp)
 {
-    return apply(pow, 10, logsense) % sp;
+    return apply(_pow, 10.0, logsense) % sp;
 }
 
 Array2D<3, 31>
 normalized_sense(const Array2D<3, 31>& logsense, const Array<31>& light)
 {
     Array<3> E = exposure(logsense, light);
-    Array<3> theta = -apply(log10, E);
+    Array<3> theta = -::apply(_log10, E);
     std::cerr << "theta: " << theta << "\n";
     Array2D<3, 31> norm_sense = ~(~logsense + theta);
     std::cerr << "Exposure with normalized sense: " << exposure(norm_sense, light * 10) << "\n";
@@ -155,7 +167,7 @@ Array<2> white_point(const Array<31>& ill)
 
 Array<31> transmittance(const Array2D<3, 31>& dyes, const Array<3>& q)
 {
-    return apply(pow, 10, -(~dyes % q));
+    return apply(_pow, 10, -(~dyes % q));
 }
 
 Array<31> outflux(const Array2D<3, 31>& dyes, const Array<31>& light, const Array<3>& q)
@@ -324,11 +336,13 @@ std::vector<ColorW> reference_colors(const ReflGen& refl_gen,
     return res;
 }
 
+/*
 Array<31> spectrum_of(const SpectrumData& sd, const Color& xyz)
 {
     Array<3> axyz = xyz.to_array();
     Array<3> v = sd.tri_to_v_mtx % axyz;
 }
+*/
 
 double couplers_opt_func(unsigned n, const double * x,
         double * gr, void * func_data);
@@ -456,7 +470,7 @@ public:
     Color develop(const Color& xyz)
     {
         Array<31> sp = m_refl_gen.spectrum_of(xyz);
-        Array<3> H = apply(log10, exposure(m_film_sense, sp));
+        Array<3> H = ::apply(_log10, exposure(m_film_sense, sp));
         auto negative = develop_film(H);
         auto positive = develop_paper(negative);
         auto trans = transmittance(positive, ones<3>());
@@ -488,7 +502,7 @@ public:
         Array<31> sp = trans * m_proj_light;
 
         // log10(10^paper_sense % sp)
-        Array<3> H1 = apply(log10, exposure(m_paper_sense, sp));
+        Array<3> H1 = ::apply(_log10, exposure(m_paper_sense, sp));
         Array<3> dev;
         dev = Array<3> {{
             m_chi_paper[0](H1[0]),
@@ -566,12 +580,12 @@ private:
         }};
         Array<3> cKfs = 1 - kfs/m_kfmax;
         
-        Array<31> trans = apply(pow, 10,
+        Array<31> trans = apply(_pow, 10,
             -(kfs % m_film_dyes
                 + cKfs % m_couplers)
         );
-        return apply(log10,
-            apply(pow, 10, m_paper_sense) % (m_proj_light * trans)
+        return ::apply(_log10,
+            apply(_pow, 10, m_paper_sense) % (m_proj_light * trans)
         );
     }
 
@@ -583,8 +597,8 @@ private:
             m_chi_paper[1](betas[1]),
             m_chi_paper[2](betas[2]),
         }};
-        Array<31> refl = apply(pow, 10, -kps % m_paper_dyes0);
-        return log10(sum(m_refl_light) / (m_refl_light % refl));
+        Array<31> refl = apply(_pow, 10, -kps % m_paper_dyes0);
+        return log10(this.reflLight.sum() / (this.reflLight.dot(refl)));
     }
 
     void make_couplers(const ParamVec& q)
@@ -659,7 +673,7 @@ public:
         };
         nlopt_set_lower_bounds(opt, lb);
         nlopt_set_upper_bounds(opt, ub);
-        nlopt_set_maxtime(opt, 60 * 5);
+        nlopt_set_maxtime(opt, 60 * 1);
 
         double opt_f = 0;
         auto r = nlopt_optimize(opt, opt_x, &opt_f);
